@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intro-test-runner"
+version = "0.1.0"
+dependencies = [
+    "pytest>=8.0.0",
+]
+requires-python = ">= 3.12"
+authors = [
+    {name = "Jeffrey Bush", email = "bushj@moravian.edu"},
+]
+description = "A program to run the tests, examine the code, and lint submissions for introductory Python courses using pytest and ruff."
+keywords = ["testing", "pytest", "linting", "education", "introductory python"]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+intro-test-runner = "intro_test_runner:main"
+
+[project.entry-points.pytest11]
+intro_test_runner = "intro_test_runner.pytestplugin"
