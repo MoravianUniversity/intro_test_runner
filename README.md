@@ -14,9 +14,3 @@ When using with gitkeeper:
   python3 -m intro_test_runner -s "$1"
   exit 0
   ```
-
-
-TODO
-----
-- Break into multiple files.
-- Make a pytest plugin from conftest.py file (which won't work when this is turned into a package).

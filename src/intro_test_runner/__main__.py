@@ -99,3 +99,5 @@ def main():
         face = random.choice(REALLY_BAD)
         print(f"{face} Some problems were found in your submission. "
               f"Please fix them and submit again.")
+
+main()
