@@ -1,11 +1,5 @@
 When using with gitkeeper:
-- May need to have an assignment.cfg file containing:
-  ```ini
-  [tests]
-  env = host
-  ```
-- Cannot use snap-based installations of python or ruff due to sandboxing issues. That may
-  alleviate the assignment.cfg requirement as well.
+- Cannot use snap-based installations of python or ruff due to sandboxing issues.
 - Must install system-wide Python package pytest.
 - To install: `python3 -m pip install git+https://github.com/MoravianUniversity/intro_test_runner.git`
 - Use the following action.sh file:
