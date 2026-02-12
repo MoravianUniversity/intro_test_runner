@@ -21,13 +21,14 @@ def lint(files: Sequence[str|Path]) -> bool:
     ruff_cmd += [str(f) for f in files]
 
     # Prevent main() from needing documentation by adding noqa: D103
+    # only add it if it doesn't contain a """ immediately inside of it
     for file in files:
         path = Path(file)
         if not path.is_file():
             continue
         content = path.read_text(encoding='utf-8')
         new_content = re.sub(
-            r'^(def\s+main\s*\([^)]*\)(\s*->\s*str)?:)',
+            r'^(def\s+main\s*\([^)]*\)\s*(->\s*None\s*)?:.*)(?!\n    """)',
             r'\1  # noqa: D103',
             content, flags=re.MULTILINE,
         )
