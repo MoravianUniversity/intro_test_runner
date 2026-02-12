@@ -202,7 +202,7 @@ def _check_test_funcs(
         count = counts.get(n, 0)
         exp_count = req_funcs.get(n[5:], 0)
         # TODO: if n[5:] is not in req_funcs, look for a close match and use its count
-        if count <= exp_count:
+        if count < exp_count:
             print(f"{face} {n} must have at least {exp_count} test 'questions'. "
                   f"You have {count} test 'questions'.")
             good = False
