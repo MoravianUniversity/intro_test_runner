@@ -56,7 +56,7 @@ def main():
         config = json.load(f)
 
         modules = config.get("modules", {})
-        text_files = config.get("text_files", {})
+        text_files = config.get("text-files", {})
         py_files = [f"{name}.py" for name in modules]
         test_files = [f"{name}_test.py" for name, config in modules.items() if check_tests(config)]
 
