@@ -28,7 +28,7 @@ def lint(files: Sequence[str|Path]) -> bool:
             continue
         content = path.read_text(encoding='utf-8')
         new_content = re.sub(
-            r'^(def\s+main\s*\([^)]*\)\s*(->\s*None\s*)?:.*)(?!\n    """)',
+            r'^(def\s+main\s*\([^)]*\)\s*(->\s*None\s*)?:.*)(?!\n\s+""")',
             r'\1  # noqa: D103',
             content, flags=re.MULTILINE,
         )
