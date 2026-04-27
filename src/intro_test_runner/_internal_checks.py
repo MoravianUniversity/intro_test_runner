@@ -87,12 +87,15 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                     print(f"{face} Misplaced docstring found in '{name(file)}' at line {child.lineno}.")
                     good = False
 
-        body = [child for child in body if not _is_docstring(child) or not isinstance(child, GOOD_AST_NODES)]
+        body = [child for child in body if not _is_docstring(child)]
 
         # Make sure the code is "clean":
         #   no top-level statements other than function definitions/imports/assignments and a final if
         #   the final if is only an if __name__ == "__main__": block and only contains a call to main()
         for i, child in enumerate(body):
+            if isinstance(child, GOOD_AST_NODES):
+                continue
+
             # Final statement must be if __name__ == "__main__":
             if not (i == len(body) - 1 and
                     isinstance(child, ast.If) and
