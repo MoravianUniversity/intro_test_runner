@@ -58,7 +58,7 @@ def main():
         modules = config.get("modules", {})
         text_files = config.get("text-files", {})
         py_files = [f"{name}.py" for name in modules]
-        test_files = [f"{name}_test.py" for name, config in modules.items() if check_tests(config)]
+        test_files = [f"{name}_test.py" for name, conf in modules.items() if check_tests(conf)]
 
         # Copy files from source directory (this is fatal if any are missing)
         good = copy_files(src, py_files + test_files + list(text_files))
@@ -78,7 +78,7 @@ def main():
 
         # Run tests
         try:
-            with timeout(5):
+            with timeout(config.get("test-timeout", 5)):
                 if not test(test_files) or (Path("_instructor_test.py").is_file() and
                     not test(["_instructor_test.py"], instructor=True)):
                     good = False
