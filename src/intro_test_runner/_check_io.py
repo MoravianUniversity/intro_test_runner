@@ -358,7 +358,7 @@ def check_output_using_user_input(
 def check_input(user_input: str, func: Callable, *args: object|None, _must_output_args: bool = True,
                 **kwargs: object|None) -> object|None:
     """
-    Assert that the return value is equal when calling the function with the given arguments and
+    Get the return value when calling the function with the given arguments and
     keyword arguments along with providing the given input to stdin to be read in. It makes sure
     that all of the input is read. By default you also makes sure that provided arguments also
     show up in the output, but settings _must_output_args=False this will not be checked.
