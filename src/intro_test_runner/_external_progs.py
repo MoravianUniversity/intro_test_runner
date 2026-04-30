@@ -50,7 +50,7 @@ def lint(files: Sequence[str|Path]) -> bool:
     return True
 
 
-def test(files: Sequence[str|Path], instructor: bool = False) -> bool:
+def test(files: Sequence[str|Path], instructor: bool = False) -> bool:  # noqa: PT028
     if len(files) == 0:
         return True
 
