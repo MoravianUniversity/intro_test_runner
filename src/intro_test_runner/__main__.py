@@ -87,7 +87,9 @@ def main():
         except Timeout as ex:
             print("⌛ The tests took too long to run and timed out. "
                     "There may be an infinite loop or an extra input() in your code.")
-            print(f"Your code was terminated in file {ex.__traceback__.tb_frame.f_globals['__file__']} at line {ex.__traceback__.tb_lineno}.")
+            tb = ex.__traceback__
+            if tb is not None:
+                print(f"Your code was terminated in file {tb.tb_frame.f_globals['__file__']} at line {tb.tb_lineno}.")
             good = False
 
         # Check text files
