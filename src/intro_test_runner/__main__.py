@@ -63,53 +63,60 @@ def main():
     test_files = [f"{name}_test.py" for name, conf in modules.items() if check_tests(conf)]
 
     # Copy files from source directory (this is fatal if any are missing)
-    good = copy_files(src, py_files + test_files + list(text_files))
-    if not good:
+    if not copy_files(src, py_files + test_files + list(text_files)):
         face = random.choice(REALLY_BAD)
         print(f"{face} No further checks can be done until the missing files are provided. "
                 "Please fix and submit again.")
         return
 
+    problem_types = []
     output = io.StringIO()
     with redirect_stdout(output):
         # Lint all files
-        good = lint(py_files + test_files) and good
+        if not lint(py_files + test_files):
+            problem_types.append("lint")
 
         # Check modules
-        good = check_all(modules, check_module) and good
+        if not check_all(modules, check_module):
+            problem_types.append("module")
 
         # Run tests
         try:
             with timeout(config.get("test-timeout", 5)):
-                if not test(test_files) or (Path("_instructor_test.py").is_file() and
+                if not test(test_files):
+                    problem_types.append("test")
+                if (Path("_instructor_test.py").is_file() and
                     not test(["_instructor_test.py"], instructor=True)):
-                    good = False
+                    problem_types.append("instructor test")
         except Timeout as ex:
             print("⌛ The tests took too long to run and timed out. "
                     "There may be an infinite loop or an extra input() in your code.")
             tb = ex.__traceback__
             if tb is not None:
                 print(f"Your code was terminated in file {tb.tb_frame.f_globals['__file__']} at line {tb.tb_lineno}.")
-            good = False
+            problem_types.append("timeout")
 
         # Check text files
-        good = check_all(text_files, check_text_file) and good
-
-        if good:
-            face = random.choice(GOOD)
-            print(f"{face} You passed all style checks and code tests! Your submission looks good!")
-            print("Due to the nature of these checks, passing does not guarantee full credit.")
-        else:
-            face = random.choice(REALLY_BAD)
-            print(f"{face} Some problems were found in your submission. "
-                f"Please fix them and submit again.")
+        if not check_all(text_files, check_text_file):
+            problem_types.append("text")
 
     output_value = output.getvalue()
     print(output_value)
-    if not good:
-        summary = llm_summary(output_value, config)
+
+    if len(problem_types) == 0:
+        face = random.choice(GOOD)
+        print(f"{face} You passed all style checks and code tests! Your submission looks good!")
+        print("Due to the nature of these checks, passing does not guarantee full credit.")
+    else:
+        face = random.choice(REALLY_BAD)
+        print(f"{face} Some problems were found in your submission. "
+            f"Please fix them and submit again.")
+        summary = llm_summary(output_value, config, problem_types)
         if summary is not None:
-            print("\n💡 LLM Summary of Issues: (remember: this is an automated summary and may not be perfect)")
+            print()
+            print("💡 The above was run through the AI tutor and the following feedback was generated:")
+            print("(remember: this is an automated summary and may have mistakes)")
+            print()
             print(summary)
 
 main()

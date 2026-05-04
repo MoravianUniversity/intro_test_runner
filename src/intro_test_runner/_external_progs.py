@@ -91,13 +91,58 @@ def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "
     return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
-def llm_summary(instructor_results: str, config: dict) -> str|None:
-    """Get a summary of the instructor test results from the LLM."""
+def llm_summary(
+        instructor_results: str, config: dict,
+        problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text"]
+    ) -> str|None:
+    """
+    Get a summary of the instructor test results from the LLM.
+    
+    If "llm-host" is not in config, returns None. Otherwise, returns the LLM summary as a string.
+    The config can also include "llm-model" and "llm-prompt-header" if necessary.
+
+    The problem_types parameter is a list of the types of problems that were found (e.g. "lint",
+    "test", "instructor test", "timeout", "module", "text") which are used to customize the prompt
+    for the LLM.
+    """
     if "llm-host" not in config:
         return None
     llm_host = config['llm-host']
     llm_model = config.get('llm-model', "")
-    prompt_header = config.get('llm-prompt-header', "You are tutor explaining the results of a linter and automated tests to a student for their Python code. Address the student but don't ask for follow up. The output doesn't need an intro, conclusion, or general advice. Be succinct. Give an overall summary of each unique problem and state the next steps and how to fix (for example which line of code to look at and/or what to do). Combine repeats. You may not suggest that they suppress linting messages or change linting settings. Instead, guide the student on how they should fix the underlying problems. The instructor tests may not be changed and are correct; thus the suggestions should be to fix their code. Here is the results the student received:")
+    type_map = {
+        "lint": "a linter",
+        "test": "student tests",
+        "instructor test": "instructor tests",
+        "timeout": "tests that timed out",
+        "module": "assignment requirements",
+        "text": "assignment written answers"
+    }
+    types = [type_map.get(pt, pt) for pt in problem_types]
+    types_str = ", ".join(types[:-1]) + (", and " if len(types) > 1 else "") + types[-1]
+
+    supession_note = "You may not suggest that they suppress linting messages or change linting settings." if "lint" in problem_types else ""
+    instructor_note = "The instructor tests may not be changed and are correct. " if "instructor test" in problem_types else ""
+    either_note = "Instead, guide the student on how they should fix the underlying problems in their code. " if "lint" in problem_types or "instructor test" in problem_types else ""
+
+    addl_prompt = config.get("llm-addl-prompt", "")
+    prompt_header = config.get(
+        'llm-prompt-header',
+        "You are tutor explaining the results of {types_str} to a student for their Python code "
+        "assignment. Address the student but don't ask for follow up. The output doesn't "
+        "need an intro, conclusion, or general advice. Be succinct. Address the highest-level "
+        "problems first. It is okay to ignore specific problems, especially if they are "
+        "repeated or dependent on other issues. Give an overall summary of each unique problem in "
+        "the report with the next steps and how to fix it (for example which line of code to look "
+        "at and/or what to do). Combine repeats. Do not mention problems that are not in the "
+        "report. Do not give any advice that is not directly related to the problems in the report. "
+        "{supession_note}{instructor_note}{either_note}{addl_prompt}Here is the report the student received:"
+    ).format(
+        types_str=types_str,
+        supession_note=supession_note,
+        instructor_note=instructor_note,
+        either_note=either_note,
+        addl_prompt=addl_prompt
+    )
     prompt = f"{prompt_header}\n\n{instructor_results}\n"
     try:
         return llm_chat(prompt, host=llm_host, model=llm_model)
@@ -105,3 +150,4 @@ def llm_summary(instructor_results: str, config: dict) -> str|None:
         print("⁉️ Failed to get LLM summary. Please check your LLM configuration and ensure your LLM is running and accessible.")
         print(f"Error details: {ex}")
         return None
+    
