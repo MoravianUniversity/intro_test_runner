@@ -7,8 +7,8 @@ from itertools import zip_longest
 import ast
 
 
-def name(path: Path|str) -> str:
-    return Path(path).name
+def name(path: Path|str, no_ext: bool = False) -> str:
+    return Path(path).stem if no_ext else Path(path).name
 
 
 def ast_eq(node1: ast.AST | list[ast.AST], node2: ast.AST | list[ast.AST]) -> bool:

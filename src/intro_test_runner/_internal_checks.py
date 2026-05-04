@@ -78,13 +78,13 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                 if i == 0:
                     continue # Module docstring is fine
                 elif _is_docstring(body[i-1]):
-                    print(f"{face} Multiple consecutive docstrings found in '{name(file)}' as lines {body[i-1].lineno} {child.lineno}. Combine them. Only the first one is considered a module docstring.")
+                    print(f"{face} Multiple consecutive docstrings found in '{name(file, True)}' as lines {body[i-1].lineno} {child.lineno}. Combine them. Only the first one is considered a module docstring.")
                     good = False
                 elif isinstance(body[i-1], (ast.Import, ast.ImportFrom)):
-                    print(f"{face} Misplaced docstring found in '{name(file)}' at line {child.lineno}. Move it above the imports to be a module docstring.")
+                    print(f"{face} Misplaced docstring found in '{name(file, True)}' at line {child.lineno}. Move it above the imports to be a module docstring.")
                     good = False
                 else:
-                    print(f"{face} Misplaced docstring found in '{name(file)}' at line {child.lineno}.")
+                    print(f"{face} Misplaced docstring found in '{name(file, True)}' at line {child.lineno}.")
                     good = False
 
         body = [child for child in body if not _is_docstring(child)]
@@ -107,14 +107,14 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                     len(child.test.comparators) == 1 and
                     isinstance(child.test.comparators[0], ast.Constant) and
                     child.test.comparators[0].value == "__main__"):
-                print(f"{face} Top-level code found in '{name(file)}' which is not allowed.")
+                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
                 print(f"   Instructor diagnosis info: {i}/{len(body)} {ast.dump(child)}")
                 print()
                 return code, False
             # Body of if must only be a call to main() or pytest.main()
             if len(child.body) != 1 or not isinstance(child.body[0], ast.Expr) or not isinstance(
                     child.body[0].value, ast.Call):
-                print(f"{face} Top-level code found in '{name(file)}' which is not allowed.")
+                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
                 print(f"   Instructor diagnosis info: {len(body)} {ast.dump(child)}")
                 print()
                 return code, False
@@ -124,14 +124,14 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                         isinstance(call.func.value, ast.Name) and
                         call.func.value.id == "pytest" and
                         call.func.attr == "main")):
-                print(f"{face} Top-level code found in '{name(file)}' which is not allowed.")
+                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
                 print(f"   Instructor diagnosis info: call {ast.dump(call)}")
                 print()
                 return code, False
 
         return code, good
     except SyntaxError as e:
-        print(f"{face} Your submission has a syntax error in '{name(file)}': {e}")
+        print(f"{face} Your submission has a syntax error in '{name(file, True)}': {e}")
         return None, False
 
 
@@ -150,14 +150,14 @@ def _check_func_count(
         face = random.choice(BAD)
     names = list(set(all_names))
     if len(names) != len(all_names):
-        print(f"{face} You have duplicate {typ} names in '{name(file)}'.")
+        print(f"{face} You have duplicate {typ} names in '{name(file, True)}'.")
         good = False
     if more_allowed and len(names) < expected_count:
-        print(f"{face} You must have at least {expected_count} {typ}s in '{name(file)}'. "
+        print(f"{face} You must have at least {expected_count} {typ}s in '{name(file, True)}'. "
               f"You have {len(names)}.")
         good = False
     elif not more_allowed and len(names) != expected_count:
-        print(f"{face} You must have exactly {expected_count} {typ}s in '{name(file)}'. "
+        print(f"{face} You must have exactly {expected_count} {typ}s in '{name(file, True)}'. "
               f"You have {len(names)}.")
         good = False
     return good
@@ -177,7 +177,7 @@ def _check_funcs(
     given_exp_names = [name for name in req_funcs if not name.startswith("_")]
     for exp_name in given_exp_names:
         if exp_name not in names:
-            print(f"{face} You are missing the '{exp_name}' function in '{name(file)}'.")
+            print(f"{face} You are missing the '{exp_name}' function in '{name(file, True)}'.")
             good = False
 
     for func in funcs:
@@ -190,7 +190,7 @@ def _check_funcs(
         doc = ast.get_docstring(func)
         doc_len = 0 if doc is None else len(doc)
         if doc_len < exp_len:
-            print(f"{face} The '{name(file)}.{func.name}' function docstring "
+            print(f"{face} The '{name(file, True)}.{func.name}' function docstring "
                   "should be more descriptive...")
             good = False
 
@@ -209,7 +209,7 @@ def _check_for_unused_funcs(
     good = True
     for func in _get_func_defs(code):
         if func.name not in func_calls:
-            print(f"{face} The '{func.name}' function in '{name(file)}' is not called anywhere.")
+            print(f"{face} The '{func.name}' function in '{name(file, True)}' is not called anywhere.")
             good = False
     return good
 
@@ -256,7 +256,7 @@ def _check_for_useless_funcs(
     good = True
     for func in funcs:
         if _is_useless_func(func):
-            print(f"{face} The '{func.name}' function in '{name(file)}' does not seem to do anything.")
+            print(f"{face} The '{func.name}' function in '{name(file, True)}' does not seem to do anything.")
             good = False
     return good
 
@@ -282,7 +282,7 @@ def _check_test_funcs(
     given_exp_names = [f"test_{n}" for n in req_funcs if not n.startswith("_")]
     for exp_name in given_exp_names:
         if exp_name not in names:
-            print(f"{face} You are missing the '{exp_name}' test function in '{name(test_file)}'.")
+            print(f"{face} You are missing the '{exp_name}' test function in '{name(test_file, True)}'.")
             good = False
 
     # Check that there are enough questions in each test
