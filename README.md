@@ -135,14 +135,16 @@ Once it is set up, you can enable it in the test runner with options in the `tes
 ```json
 {
   // other options...
-  "llm-host": "http://localhost:30000/v1", // URL of the LLM's OpenAI API endpoint
-  "llm-model": "...", // optional, name of the model to specify in the API request (only required if your LLM's API endpoint serves multiple models)
-  "llm-prompt-header": "...", // optional, header to include at the beginning of the prompt sent to the LLM (see below)
-  "llm-addl-prompt": "", // optional, additional prompt to include at the end of the default prompt
+  "llm": {
+    "host": "http://localhost:30000/v1", // URL of the LLM's OpenAI API endpoint
+    "model": "...", // optional, name of the model to specify in the API request (only required if your LLM's API endpoint serves multiple models)
+    "prompt-header": "...", // optional, header to include at the beginning of the prompt sent to the LLM (see below)
+    "addl-prompt": "", // optional, additional prompt to include at the end of the default prompt
+  }
 }
 ```
 
-The default `llm-prompt-header` is:
+The default `prompt-header` is:
 
 ```plain-text
 You are tutor explaining the results of {types_str} to a student for their Python code assignment.

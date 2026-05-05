@@ -92,23 +92,23 @@ def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "
 
 
 def llm_summary(
-        instructor_results: str, config: dict,
+        instructor_results: str, config: dict[str, str]|None,
         problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text"]
     ) -> str|None:
     """
     Get a summary of the instructor test results from the LLM.
     
-    If "llm-host" is not in config, returns None. Otherwise, returns the LLM summary as a string.
-    The config can also include "llm-model" and "llm-prompt-header" if necessary.
+    If "host" is not in config, returns None. Otherwise, returns the LLM summary as a string.
+    The config can also include "model" and "prompt-header" if necessary.
 
     The problem_types parameter is a list of the types of problems that were found (e.g. "lint",
     "test", "instructor test", "timeout", "module", "text") which are used to customize the prompt
     for the LLM.
     """
-    if "llm-host" not in config:
+    if config is None or "host" not in config:
         return None
-    llm_host = config['llm-host']
-    llm_model = config.get('llm-model', "")
+    llm_host = config['host']
+    llm_model = config.get('model', "")
     type_map = {
         "lint": "a linter",
         "test": "student tests",
@@ -124,9 +124,9 @@ def llm_summary(
     instructor_note = "The instructor tests may not be changed and are correct. " if "instructor test" in problem_types else ""
     either_note = "Instead, guide the student on how they should fix the underlying problems in their code. " if "lint" in problem_types or "instructor test" in problem_types else ""
 
-    addl_prompt = config.get("llm-addl-prompt", "")
+    addl_prompt = config.get("addl-prompt", "")
     prompt_header = config.get(
-        'llm-prompt-header',
+        'prompt-header',
         "You are tutor explaining the results of {types_str} to a student for their Python code "
         "assignment. Address the student but don't ask for follow up. The output doesn't "
         "need an intro, conclusion, or general advice. Be succinct. Address the highest-level "

@@ -111,7 +111,7 @@ def main():
         face = random.choice(REALLY_BAD)
         print(f"{face} Some problems were found in your submission. "
             f"Please fix them and submit again.")
-        summary = llm_summary(output_value, config, problem_types)
+        summary = llm_summary(output_value, config["llm"], problem_types)
         if summary is not None:
             print()
             print("💡 The above was run through the AI tutor and the following feedback was generated:")
