@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
     "pytest>=8.0.0",
     "requests>=2.32.0",
+    "markdown>=3.10.0",
 ]
 requires-python = ">= 3.12"
 authors = [

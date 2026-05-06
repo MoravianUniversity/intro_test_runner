@@ -5,50 +5,45 @@ Internal checks for student submissions.
 from collections.abc import Callable, Sequence
 from pathlib import Path
 import ast
-import random
 import shutil
 
-from ._faces import BAD, MED_BAD, REALLY_BAD
-from ._utils import ast_eq, name
+from ._utils import ast_eq, name, Output
 
 
-def copy_files(src: str, paths: Sequence[str]) -> bool:
-    good = True
+def copy_files(src: str, paths: Sequence[str]) -> list[str]:
+    missing_files = []
     for path_str in paths:
         full_path = Path(src).joinpath(path_str).resolve()
         path = Path(path_str).resolve()
         if not full_path.exists() or not full_path.is_file():
-            face = random.choice(REALLY_BAD)
-            print(f"{face} Your submission does not include '{path_str}' at all.")
-            good = False
+            missing_files.append(path_str)
         elif full_path != path:
             shutil.copy(full_path, path)
-    return good
+    return missing_files
 
 
-def check_text_file(path_str: str, config: dict[str, int|float]) -> bool:
+def check_text_file(path_str: str, config: dict[str, int|float], output: Output) -> bool:
     orig_lines = config.get("original-lines", 0)
     min_lines = config.get("min-lines", 0)
     max_lines = config.get("max-lines", float('inf'))
 
     # Copy the path to be relative to the source directory
     path = Path(path_str).resolve()
-    face = random.choice(MED_BAD)
     try:
         lines = path.read_text(encoding='utf-8').strip().splitlines()
         line_count = len(lines)
 
         if line_count == orig_lines:
-            print(f"{face} Your submission seems to have an unmodified '{path_str}'.")
+            output.p(f":-{{ Your submission seems to have an unmodified '{path_str}'.")
             return False
         elif line_count < min_lines:
-            print(f"{face} Your submission seems to have an incomplete '{path_str}'.")
+            output.p(f":-| Your submission seems to have an incomplete '{path_str}'.")
             return False
         elif line_count > max_lines:
-            print(f"{face} Your submission has a ridiculous number of lines in '{path_str}'.")
+            output.p(f":-| Your submission has a ridiculous number of lines in '{path_str}'.")
             return False
     except FileNotFoundError:
-        print(f"{face} Your submission does not include '{path_str}' at all.")
+        output.p(f":-{{ Your submission does not include '{path_str}' at all.")
         return False
     return True
 
@@ -64,9 +59,7 @@ def _is_docstring(node: ast.AST) -> bool:
     return isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
 
 
-def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, bool]:
-    if face is None:
-        face = random.choice(BAD)
+def _get_code_ast(file: Path, output: Output) -> tuple[ast.Module|None, bool]:
     try:
         good = True
         code = ast.parse(file.read_text(encoding='utf-8'))
@@ -78,13 +71,13 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                 if i == 0:
                     continue # Module docstring is fine
                 elif _is_docstring(body[i-1]):
-                    print(f"{face} Multiple consecutive docstrings found in '{name(file, True)}' as lines {body[i-1].lineno} {child.lineno}. Combine them. Only the first one is considered a module docstring.")
+                    output.p(f":-| Multiple consecutive docstrings found in `{name(file, True)}` as lines {body[i-1].lineno} {child.lineno}. Combine them. Only the first one is considered a module docstring.")
                     good = False
                 elif isinstance(body[i-1], (ast.Import, ast.ImportFrom)):
-                    print(f"{face} Misplaced docstring found in '{name(file, True)}' at line {child.lineno}. Move it above the imports to be a module docstring.")
+                    output.p(f":-| Misplaced docstring found in `{name(file, True)}` at line {child.lineno}. Move it above the imports to be a module docstring.")
                     good = False
                 else:
-                    print(f"{face} Misplaced docstring found in '{name(file, True)}' at line {child.lineno}.")
+                    output.p(f":-| Misplaced docstring found in `{name(file, True)}` at line {child.lineno}.")
                     good = False
 
         body = [child for child in body if not _is_docstring(child)]
@@ -107,16 +100,16 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                     len(child.test.comparators) == 1 and
                     isinstance(child.test.comparators[0], ast.Constant) and
                     child.test.comparators[0].value == "__main__"):
-                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
-                print(f"   Instructor diagnosis info: {i}/{len(body)} {ast.dump(child)}")
-                print()
+                output.p(f":-| Top-level code found in `{name(file, True)}` which is not allowed."
+                  f"   Instructor diagnosis info: `{i}/{len(body)} {ast.dump(child)}`")
+                output.br()
                 return code, False
             # Body of if must only be a call to main() or pytest.main()
             if len(child.body) != 1 or not isinstance(child.body[0], ast.Expr) or not isinstance(
                     child.body[0].value, ast.Call):
-                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
-                print(f"   Instructor diagnosis info: {len(body)} {ast.dump(child)}")
-                print()
+                output.p(f":-| Top-level code found in `{name(file, True)}` which is not allowed.")
+                output.p(f"   Instructor diagnosis info: `{len(body)} {ast.dump(child)}`")
+                output.br()
                 return code, False
             call = child.body[0].value
             if not ((isinstance(call.func, ast.Name) and call.func.id == "main") or
@@ -124,14 +117,14 @@ def _get_code_ast(file: Path, face: str|None = None) -> tuple[ast.Module|None, b
                         isinstance(call.func.value, ast.Name) and
                         call.func.value.id == "pytest" and
                         call.func.attr == "main")):
-                print(f"{face} Top-level code found in '{name(file, True)}' which is not allowed.")
-                print(f"   Instructor diagnosis info: call {ast.dump(call)}")
-                print()
+                output.p(f":-| Top-level code found in `{name(file, True)}` which is not allowed.")
+                output.p(f"   Instructor diagnosis info: call {ast.dump(call)}")
+                output.br()
                 return code, False
 
         return code, good
     except SyntaxError as e:
-        print(f"{face} Your submission has a syntax error in '{name(file, True)}': {e}")
+        output.p(f":-( Your submission has a syntax error in `{name(file, True)}`: `{e}`")
         return None, False
 
 
@@ -141,43 +134,38 @@ def _get_func_defs(code: ast.Module) -> list[ast.FunctionDef]:
 
 def _check_func_count(
         all_names: Sequence[str],
-        file: Path|str, expected_count: int,
-        more_allowed: bool = False, face: str|None = None,
-        typ: str = "function",
+        file: Path|str, expected_count: int, output: Output,
+        more_allowed: bool = False, typ: str = "function",
 ) -> bool:
     good = True
-    if face is None:
-        face = random.choice(BAD)
     names = list(set(all_names))
     if len(names) != len(all_names):
-        print(f"{face} You have duplicate {typ} names in '{name(file, True)}'.")
+        output.p(f":-| You have duplicate {typ} names in `{name(file, True)}`.")
         good = False
     if more_allowed and len(names) < expected_count:
-        print(f"{face} You must have at least {expected_count} {typ}s in '{name(file, True)}'. "
-              f"You have {len(names)}.")
+        output.p(f":-| You must have at least {expected_count} {typ}s in `{name(file, True)}`. "
+                 f"You have {len(names)}.")
         good = False
     elif not more_allowed and len(names) != expected_count:
-        print(f"{face} You must have exactly {expected_count} {typ}s in '{name(file, True)}'. "
-              f"You have {len(names)}.")
+        output.p(f":-| You must have exactly {expected_count} {typ}s in `{name(file, True)}`. "
+                 f"You have {len(names)}.")
         good = False
     return good
 
 
 def _check_funcs(
         file: Path, funcs: Sequence[ast.FunctionDef], req_funcs: Sequence[str],
-        min_doc_length: int|dict[str, int] = 0,
-        addl_funcs_allowed: bool = False, face: str|None = None,
+        output: Output, min_doc_length: int|dict[str, int] = 0,
+        addl_funcs_allowed: bool = False,
 ) -> bool:
-    if face is None:
-        face = random.choice(BAD)
     func_names = [func.name for func in funcs]
-    good = _check_func_count(func_names, file, len(req_funcs), addl_funcs_allowed, face, "function")
+    good = _check_func_count(func_names, file, len(req_funcs), output, addl_funcs_allowed, "function")
 
     names = list(set(func_names))
     given_exp_names = [name for name in req_funcs if not name.startswith("_")]
     for exp_name in given_exp_names:
         if exp_name not in names:
-            print(f"{face} You are missing the '{exp_name}' function in '{name(file, True)}'.")
+            output.p(f":-| You are missing the `{exp_name}()` function in `{name(file, True)}`.")
             good = False
 
     for func in funcs:
@@ -190,8 +178,8 @@ def _check_funcs(
         doc = ast.get_docstring(func)
         doc_len = 0 if doc is None else len(doc)
         if doc_len < exp_len:
-            print(f"{face} The '{name(file, True)}.{func.name}' function docstring "
-                  "should be more descriptive...")
+            output.p(f":-| The `{name(file, True)}.{func.name}()` function docstring "
+                     "should be more descriptive...")
             good = False
 
     return good
@@ -200,16 +188,14 @@ def _check_funcs(
 def _check_for_unused_funcs(
         file: Path,
         code: ast.Module,
-        face: str|None = None,
+        output: Output,
 ) -> bool:
-    if face is None:
-        face = random.choice(BAD)
     func_calls = {node.func.id for node in ast.walk(code)
                   if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
     good = True
     for func in _get_func_defs(code):
         if func.name not in func_calls:
-            print(f"{face} The '{func.name}' function in '{name(file, True)}' is not called anywhere.")
+            output.p(f":-| The `{func.name}()` function in `{name(file, True)}` is not called anywhere in that file.")
             good = False
     return good
 
@@ -249,40 +235,36 @@ def _is_useless_func(func: ast.FunctionDef) -> bool:
 def _check_for_useless_funcs(
         file: Path,
         funcs: Sequence[ast.FunctionDef],
-        face: str|None = None,
+        output: Output,
 ) -> bool:
-    if face is None:
-        face = random.choice(BAD)
     good = True
     for func in funcs:
         if _is_useless_func(func):
-            print(f"{face} The '{func.name}' function in '{name(file, True)}' does not seem to do anything.")
+            output.p(f":-| The `{func.name}()` function in `{name(file, True)}` does not seem to do anything.")
             good = False
     return good
 
 
 def _check_test_funcs(
-        test_file: Path, req_funcs: dict[str, int],
-        addl_tests_allowed: bool = False, face: str|None = None
+        test_file: Path, req_funcs: dict[str, int], output: Output,
+        addl_tests_allowed: bool = False,
 ) -> bool:
-    if face is None:
-        face = random.choice(BAD)
-    code, good = _get_code_ast(test_file, face)
+    code, good = _get_code_ast(test_file, output)
     if code is None:
         return False
     tests = [test for test in _get_func_defs(code) if test.name.startswith("test_")]
 
     # Check that there are enough test functions
     test_names = [test.name for test in tests]
-    good = _check_func_count(test_names, test_file, len(req_funcs),
-                             addl_tests_allowed, face, "test function") and good
+    good = _check_func_count(test_names, test_file, len(req_funcs), output,
+                             addl_tests_allowed, "test function") and good
 
     # Check that all expected test functions are present
     names = list(set(test_names))
     given_exp_names = [f"test_{n}" for n in req_funcs if not n.startswith("_")]
     for exp_name in given_exp_names:
         if exp_name not in names:
-            print(f"{face} You are missing the '{exp_name}' test function in '{name(test_file, True)}'.")
+            output.p(f":-| You are missing the `{exp_name}` test function in `{name(test_file, True)}`.")
             good = False
 
     # Check that there are enough questions in each test
@@ -298,8 +280,8 @@ def _check_test_funcs(
         exp_count = req_funcs.get(n[5:], 0)
         # TODO: if n[5:] is not in req_funcs, look for a close match and use its count
         if count < exp_count:
-            print(f"{face} {n} must have at least {exp_count} test 'questions'. "
-                  f"You have {count} test 'questions'.")
+            output.p(f":-| `{n}` must have at least {exp_count} test 'questions'. "
+                     f"You have {count} test 'questions'.")
             good = False
 
     # Check for duplicate questions
@@ -312,8 +294,7 @@ def _check_test_funcs(
                     end = "."
                     if isinstance(a, ast.expr) and isinstance(b, ast.expr):
                         end = f" on lines {a.lineno} and {b.lineno}."
-                    print(f"{face} You have duplicate test questions in your {n} test function" +
-                          end)
+                    output.p(f":-| You have duplicate test questions in your `{n}` test function" + end)
                     good = False
 
     # TODO: Check that function calls have their return values used in the assert statement
@@ -322,8 +303,7 @@ def _check_test_funcs(
 
 
 
-def check_module(name: str, config: dict) -> bool:
-    face = random.choice(BAD)
+def check_module(name: str, config: dict, output: Output) -> bool:
     exp_funcs: list[str] | dict[str, int] = config.get("expected-functions", [])
     addl_funcs_allowed = config.get("addl-funcs-allowed", False)
     addl_tests_allowed = config.get("addl-tests-allowed", False)
@@ -336,45 +316,47 @@ def check_module(name: str, config: dict) -> bool:
     test_path = Path(f"{name}_test.py").resolve()
 
     # Check that the module has a module-level docstring
-    code, good = _get_code_ast(path, face)
+    code, good = _get_code_ast(path, output)
     if code is None:
         return False
     module_doc = ast.get_docstring(code)
     module_doc_len = 0 if module_doc is None else len(module_doc)
     if module_doc_len < min_module_doc_length:
         if module_doc_len == 0:
-            print(f"{face} The '{name}' module should have a docstring at the top.")
+            output.p(f":-| The `{name}` module should have a docstring at the top.")
         else:
-            print(f"{face} The '{name}' module docstring should be more descriptive...")
+            output.p(f":-| The `{name}` module docstring should be more descriptive...")
         good = False
 
     # Check that the module has the expected functions
     exp_func_names = exp_funcs if isinstance(exp_funcs, list) else list(exp_funcs.keys())
     funcs = _get_func_defs(code)
-    if not _check_funcs(path, funcs, exp_func_names, min_func_doc_length, addl_funcs_allowed, face):
+    if not _check_funcs(path, funcs, exp_func_names, output, min_func_doc_length, addl_funcs_allowed):
         good = False
 
     # Check for any unused and useless functions
-    if check_unused_funcs and not _check_for_unused_funcs(path, code, face):
+    if check_unused_funcs and not _check_for_unused_funcs(path, code, output):
         good = False
-    if check_useless_funcs and not _check_for_useless_funcs(path, funcs, face):
+    if check_useless_funcs and not _check_for_useless_funcs(path, funcs, output):
         good = False
 
     # Check that there are the right number of tests if required
     if check_tests(config) and isinstance(exp_funcs, dict):
         testable_funcs = {f: n for f, n in exp_funcs.items() if n > 0}
-        if not _check_test_funcs(test_path, testable_funcs, addl_tests_allowed, face):
+        if not _check_test_funcs(test_path, testable_funcs, output, addl_tests_allowed):
             good = False
 
     return good
 
 
 def check_all(all_configs: dict[str, dict],
-               check: Callable[[str, dict], bool]) -> bool:
+              output: Output,
+              check: Callable[[str, dict, Output], bool]) -> bool:
     good = True
     for path_str, config in all_configs.items():
-        if not check(path_str, config):
+        if not check(path_str, config, output):
             good = False
+        output.reset_faces()
     return good
 
 

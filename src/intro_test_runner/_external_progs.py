@@ -4,16 +4,14 @@ External program integrations, such as linters and test runners.
 
 from collections.abc import Sequence
 from pathlib import Path
-import random
 import re
 import subprocess
 import requests
 
-from ._faces import BAD
-from ._utils import name
+from ._utils import Output, name
 
 
-def lint(files: Sequence[str|Path]) -> bool:
+def lint(files: Sequence[str|Path], output: Output) -> bool:
     """Run ruff on the given files. Returns True if linting passed, False otherwise."""
     ruff_cmd = ["ruff", "check", "-n", "-q"]
     if Path(".ruff.toml").is_file():
@@ -40,19 +38,25 @@ def lint(files: Sequence[str|Path]) -> bool:
     try:
         result = subprocess.run(ruff_cmd, capture_output=True, text=True, check=False)  # noqa: S603
         if result.returncode != 0:
-            face = random.choice(BAD)
-            print(f"{face} Your submission has style issues. Please fix them and try again.")
-            print(result.stdout.strip())
-            print(result.stderr.strip())
+            output.p(":-{ Your submission has style issues. Please fix them and try again. The links tell you more about the errors and how to fix them.")
+            output.pre(__ruff_linkify(result.stdout.strip()))
+            output.pre(__ruff_linkify(result.stderr.strip()))
             return False
     except FileNotFoundError:
-        print("⁉️ 'ruff' is not installed or not found in PATH. "
-              "The instructor must install ruff to enable linting checks.")
+        output.p("⁉️ `ruff` is not installed or not found in `PATH`. "
+                 "The instructor must install ruff to enable linting checks.")
         return False
     return True
 
 
-def test(files: Sequence[str|Path], instructor: bool = False) -> bool:  # noqa: PT028
+def __ruff_linkify(text: str) -> str:
+    """Convert ruff output error codes into links to the relevant webpage."""
+    return re.sub(r'^(\s+\d+:\d+\s+)([A-Z]+\d+)(\s)',
+                  r'\1<a href="https://docs.astral.sh/ruff/rules/\2">\2</a>\3',
+                  text, flags=re.MULTILINE)
+
+
+def test(files: Sequence[str|Path], output: Output, instructor: bool = False) -> bool:  # noqa: PT028
     """Run pytest on the given files. If instructor is True, the files are considered instructor tests."""
     if len(files) == 0:
         return True
@@ -63,15 +67,18 @@ def test(files: Sequence[str|Path], instructor: bool = False) -> bool:  # noqa: 
         capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
-        face = random.choice(BAD)
         if instructor:
-            print(f"{face} Your code failed the instructor tests. "
-                  "These tests are designed to catch common mistakes.")
+            output.p(":-{ Your code failed the instructor tests. "
+                     "These tests are designed to catch common mistakes.")
         else:
-            print(f"{face} Your own tests failed on your own code. "
-                    "Make sure your own code passes your own tests!")
-        print(result.stdout.strip())
-        print(result.stderr.strip())
+            output.p(":-{ Your own tests failed on your own code. "
+                     "Make sure your own code passes your own tests!")
+        out = result.stdout.strip()
+        if out:
+            output.pre(out)
+        err = result.stderr.strip()
+        if err:
+            output.pre(err)
         return False
     return True
 
@@ -92,9 +99,9 @@ def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "
 
 
 def llm_summary(
-        instructor_results: str, config: dict[str, str]|None,
-        problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text"]
-    ) -> str|None:
+        instructor_results: str, config: dict[str, str]|None, output: Output,
+        problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text"],
+    ):
     """
     Get a summary of the instructor test results from the LLM.
     
@@ -106,7 +113,7 @@ def llm_summary(
     for the LLM.
     """
     if config is None or "host" not in config:
-        return None
+        return
     llm_host = config['host']
     llm_model = config.get('model', "")
     type_map = {
@@ -145,9 +152,13 @@ def llm_summary(
     )
     prompt = f"{prompt_header}\n\n{instructor_results}\n"
     try:
-        return llm_chat(prompt, host=llm_host, model=llm_model)
+        summary = llm_chat(prompt, host=llm_host, model=llm_model)
+        output.br()
+        output.p("💡 The above was run through the AI tutor and the following feedback was generated:\n"
+                    "(remember: this is an automated summary and may have mistakes)")
+        output.br()
+        output.md(summary)
     except requests.RequestException as ex:
-        print("⁉️ Failed to get LLM summary. Please check your LLM configuration and ensure your LLM is running and accessible.")
-        print(f"Error details: {ex}")
-        return None
+        output.p("⁉️ Failed to get LLM summary. Please check your LLM configuration and ensure your LLM is running and accessible.")
+        output.p(f"Error details: `{ex}`")
     
