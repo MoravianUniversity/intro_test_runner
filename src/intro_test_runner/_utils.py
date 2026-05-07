@@ -9,7 +9,15 @@ import html
 import random
 import re
 
-import markdown
+try:
+    from markdown2 import markdown
+    MD_KWARGS = {"extras": ["fenced-code-blocks", "tables", "strike", "cuddled-lists", "metadata", "code-friendly"]}
+except ImportError:
+    try:
+        from markdown import markdown
+        MD_KWARGS = {"extensions": ["fenced_code", "codehilite", "tables", "sane_lists"]}
+    except ImportError:
+        markdown = None
 
 def name(path: Path|str, no_ext: bool = False) -> str:
     return Path(path).stem if no_ext else Path(path).name
@@ -60,11 +68,6 @@ class Output:
         for key in self.faces:
             self.faces[key] = ""
 
-    def htmlify(self, text: str) -> str:
-        """Substitute special characters in text for HTML display."""
-        #re.replace(r'  +', lambda m: '&nbsp;' * (len(m.group(0)) - 1) + ' ', ...)
-        return re.sub(r'`([^`]*)`', lambda m: f"<code>{m.group(1)}</code>", html.escape(text)).replace("\n", "<br>")
-
     def faceify(self, text: str) -> str:
         """Substitute face codes in text for actual faces."""
         for code, face in self.faces.items():
@@ -83,7 +86,7 @@ class Output:
         """
         content = self.faceify(content)
         self.text += f"{content}\n"
-        self.html += f"<p>{self.htmlify(content)}</p>"
+        self.html += f"<p>{_htmlify(content)}</p>"
 
     def pre(self, content: str) -> None:
         """Output content as a preformatted block."""
@@ -98,7 +101,10 @@ class Output:
     def md(self, content: str) -> None:
         """Output content as markdown."""
         self.text += f"{content}\n"
-        self.html += f"<div>{markdown.markdown(content)}</div>"
+        if markdown is not None:
+            self.html += f"<div>{markdown(content, **MD_KWARGS)}</div>"
+        else:
+            self.html += f"<div>{_htmlify(content)}</div>"
 
     def print(self, html_output: bool) -> None:
         """Print the output in the appropriate format."""
@@ -106,3 +112,10 @@ class Output:
             print(self.html + "</body></html>")
         else:
             print(self.text)
+
+
+def _htmlify(text: str) -> str:
+    """Substitute special characters in text for HTML display."""
+    #re.replace(r'  +', lambda m: '&nbsp;' * (len(m.group(0)) - 1) + ' ', ...)
+    return re.sub(r'`([^`]*)`', lambda m: f"<code>{m.group(1)}</code>", html.escape(text)).replace("\n", "<br>")
+
