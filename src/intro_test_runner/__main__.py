@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 import signal
 
-from ._utils import Output
+from ._utils import Output, tb_info
 from ._external_progs import lint, test, llm_summary
 from ._internal_checks import check_module, check_text_file, check_all, copy_files, check_tests
 
@@ -94,9 +94,9 @@ def main():
     except Timeout as ex:
         output.p("⌛ The tests took too long to run and timed out. "
                  "There may be an infinite loop or an extra `input()` in your code.")
-        tb = ex.__traceback__
+        tb = tb_info(ex.__traceback__)
         if tb is not None:
-            output.p(f"Your code was terminated in file `{tb.tb_frame.f_globals['__file__']}` at line {tb.tb_lineno}.")
+            output.p(f"Your code was terminated {tb}.")
         problem_types.append("timeout")
     output.reset_faces()
 

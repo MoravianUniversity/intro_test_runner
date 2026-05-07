@@ -2,12 +2,14 @@
 Utilities functions.
 """
 
+import os
 from pathlib import Path
 from itertools import zip_longest
 import ast
 import html
 import random
 import re
+from types import TracebackType
 
 try:
     from markdown2 import markdown
@@ -38,6 +40,22 @@ def ast_eq(node1: ast.AST | list[ast.AST], node2: ast.AST | list[ast.AST]) -> bo
         return all(ast_eq(n1, n2) for n1, n2 in zip_longest(node1, node2))
     else:
         return node1 == node2
+
+
+def tb_info(tb: TracebackType|None, base: str|None = None) -> str|None:
+    if tb is None:
+        return None
+    if base is None:
+        base = os.getcwd()
+    base = os.path.abspath(base)
+    frame = tb.tb_frame
+    while frame:
+        file = frame.f_globals.get('__file__')
+        if isinstance(file, str) and base in os.path.abspath(file):
+            file = os.path.relpath(file, base)
+            return f"in file `{file}` at line {frame.f_lineno}"
+        frame = frame.f_back
+    return None
 
 
 REALLY_BAD = "😣😖😠😡🤬👿💀"               # :-(
