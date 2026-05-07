@@ -3,6 +3,7 @@ External program integrations, such as linters and test runners.
 """
 
 from collections.abc import Sequence
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -13,7 +14,7 @@ from ._utils import Output, name
 
 def lint(files: Sequence[str|Path], output: Output) -> bool:
     """Run ruff on the given files. Returns True if linting passed, False otherwise."""
-    ruff_cmd = ["ruff", "check", "-n", "-q"]
+    ruff_cmd = ["ruff", "check", "-n", "-q", "--color=always"]
     if Path(".ruff.toml").is_file():
         ruff_cmd += ["--config", ".ruff.toml"]
     elif Path("ruff.toml").is_file():
@@ -39,8 +40,10 @@ def lint(files: Sequence[str|Path], output: Output) -> bool:
         result = subprocess.run(ruff_cmd, capture_output=True, text=True, check=False)  # noqa: S603
         if result.returncode != 0:
             output.p(":-{ Your submission has style issues. Please fix them and try again. The links tell you more about the errors and how to fix them.")
-            output.pre(__ruff_linkify(result.stdout.strip()))
-            output.pre(__ruff_linkify(result.stderr.strip()))
+            out = result.stdout.strip()
+            err = result.stderr.strip()
+            output.pre_terminal(__ruff_linkify(out), out)
+            output.pre_terminal(__ruff_linkify(err), err)
             return False
     except FileNotFoundError:
         output.p("⁉️ `ruff` is not installed or not found in `PATH`. "
@@ -51,19 +54,23 @@ def lint(files: Sequence[str|Path], output: Output) -> bool:
 
 def __ruff_linkify(text: str) -> str:
     """Convert ruff output error codes into links to the relevant webpage."""
-    return re.sub(r'^(\s+\d+:\d+\s+)([A-Z]+\d+)(\s)',
-                  r'\1<a href="https://docs.astral.sh/ruff/rules/\2">\2</a>\3',
+    return re.sub(r'^(\s+\d+(?:\x1b\[(?:[0-9;]*)?m)?:(?:\x1b\[(?:[0-9;]*)?m)?\d+\s+)(\x1b\[(?:[0-9;]*)?m)?([A-Z]+\d+)(\x1b\[(?:[0-9;]*)?m)?(\s)',
+                  r'\1\2<a href="https://docs.astral.sh/ruff/rules/\3" title="Ruff Rule \3" style="color:inherit;text-decoration:underline currentColor;">\3</a>\4\5',
                   text, flags=re.MULTILINE)
 
 
-def test(files: Sequence[str|Path], output: Output, instructor: bool = False) -> bool:  # noqa: PT028
-    """Run pytest on the given files. If instructor is True, the files are considered instructor tests."""
+def test(files: Sequence[str|Path], output: Output, instructor: bool = False, html_output: bool = False) -> bool:  # noqa: PT028
+    """
+    Run pytest on the given files. If instructor is True, the files are considered instructor tests.
+    If html_output is True, the output will be in HTML format.
+    """
     if len(files) == 0:
         return True
 
     result = subprocess.run(  # noqa: S603
-        ["python3", "-m", "pytest", "--no-header", "--tb=short", "--color=no", "--cache-clear"] +
+        ["python3", "-m", "pytest", "--no-header", "--tb=short", "--color=yes", "--cache-clear"] +
         [name(file) for file in files],
+        env=os.environ | {"ITR_HTML_OUTPUT": str(html_output)},
         capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
@@ -73,12 +80,8 @@ def test(files: Sequence[str|Path], output: Output, instructor: bool = False) ->
         else:
             output.p(":-{ Your own tests failed on your own code. "
                      "Make sure your own code passes your own tests!")
-        out = result.stdout.strip()
-        if out:
-            output.pre(out)
-        err = result.stderr.strip()
-        if err:
-            output.pre(err)
+        output.pre_terminal(result.stdout)
+        output.pre_terminal(result.stderr)
         return False
     return True
 

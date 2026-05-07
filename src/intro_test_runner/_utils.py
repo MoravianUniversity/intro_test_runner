@@ -88,10 +88,17 @@ class Output:
         self.text += f"{content}\n"
         self.html += f"<p>{_htmlify(content)}</p>"
 
-    def pre(self, content: str) -> None:
+    def pre_terminal(self, content: str, plain_content: str|None = None) -> None:
         """Output content as a preformatted block."""
-        self.text += f"{content}\n"
-        self.html += f"<pre>{content}</pre>" # TODO: self.htmlify(content) here? how about the links?
+        plain_content = _remove_ansi_colors((plain_content
+                                            if plain_content is not None else content).strip())
+        # TODO: _htmlify(content) here? how about the spans (colors), links (ruff output), and difference table (tests)?
+        # still have to remove spurious < > and similar characters from output that aren't meant to be HTML
+        content = _ansi_colors_to_html(content.strip())
+        if not plain_content and not content:
+            return
+        self.text += f"{plain_content}\n"
+        self.html += f"<pre style='font-family:monospace;width:max-content;background-color:#111;color:#fff;padding-top:10px;padding-bottom:10px;padding-left:10px;padding-right:10px'>>{content}</pre>"
 
     def br(self) -> None:
         """Output a line break or empty line."""
@@ -119,3 +126,67 @@ def _htmlify(text: str) -> str:
     #re.replace(r'  +', lambda m: '&nbsp;' * (len(m.group(0)) - 1) + ' ', ...)
     return re.sub(r'`([^`]*)`', lambda m: f"<code>{m.group(1)}</code>", html.escape(text)).replace("\n", "<br>")
 
+def _ansi_colors_to_html(text: str) -> str:
+    """Convert ANSI color codes into HTML span tags with inline styles."""
+    color_map = {
+        '1': 'font-weight:bold',
+        '4': 'text-decoration:underline',
+        '31': 'color:red',
+        '32': 'color:green',
+        '33': 'color:yellow',
+        '34': 'color:blue',
+        '35': 'color:magenta',
+        '36': 'color:cyan',
+        '37': 'color:gainsboro',
+        '90': 'color:gray',
+        '91': 'color:lightcoral',
+        '92': 'color:lightgreen',
+        '93': 'color:lightyellow',
+        '94': 'color:lightblue',
+        '95': 'color:lightpink',
+        '96': 'color:lightcyan',
+        '97': 'color:white',
+        '40': 'background-color:black',
+        '41': 'background-color:red',
+        '42': 'background-color:green',
+        '43': 'background-color:yellow',
+        '44': 'background-color:blue',
+        '45': 'background-color:magenta',
+        '46': 'background-color:cyan',
+        '47': 'background-color:gainsboro',
+        '100': 'background-color:gray',
+        '101': 'background-color:lightcoral',
+        '102': 'background-color:lightgreen',
+        '103': 'background-color:lightyellow',
+        '104': 'background-color:lightblue',
+        '105': 'background-color:lightpink',
+        '106': 'background-color:lightcyan',
+        '107': 'background-color:white',
+    }
+    
+    def replace_color(match):
+        codes = match.group(1).split(';')
+        reset = max(_rfind(codes, '0'), _rfind(codes, ''))
+        if reset != -1:
+            codes = codes[:reset]  # ignore any codes after final reset
+        if len(codes) == 0:
+            return '</span>'
+        style = ';'.join(color_map.get(code, '') for code in codes)
+        return ('</span>' if reset != -1 else '') + (f'<span style="{style}">' if style else '')
+    
+    text = re.sub(r'\x1b\[(\d+(;\d+)*)?m', replace_color, text)
+    text = text.replace('\x1b[0m', '</span>')  # reset code closes the span
+    return text
+
+
+def _remove_ansi_colors(text: str) -> str:
+    """Remove ANSI color codes from output."""
+    return re.sub(r'\x1b\[(\d+(;\d+)*)?m', '', text)
+
+
+def _rfind(lst: list, value) -> int:
+    """Find the last index of value in list, or -1 if not found."""
+    for i in range(len(lst) - 1, -1, -1):
+        if lst[i] == value:
+            return i
+    return -1
