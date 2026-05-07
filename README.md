@@ -39,16 +39,24 @@ The program also looks for a `.ruff.toml` or `ruff.toml` file to determine how t
 
 The student test files must be named with the format `<module_name>_test.py` (e.g. `project_1_test.py` for `project_1.py`) and must be in the same directory as the module files. If a `_instructor_test.py` file is present in the testing directory, it will also be run as part of the tests.
 
-Installing on Gitkeeper
------------------------
+HTML Output
+-----------
+
+The runner supports some limited HTML output. The most notable use is when using the `check_output()` and similar functions which renders the difference in a side-by-side format with color coding. Other places include adding links to the ruff documentation and formatting the LLM output.
+
+To enable this, use the `--html` flag (and the output needs to be viewed somewhere that supports HTML).
+
+Using on Gitkeeper
+------------------
 
 * Cannot use snap-based installations of python or ruff due to sandboxing issues.
-* Must install system-wide Python package pytest.
+* Must install this library as a system-wide Python package (including the dependencies).
 * To install: `python3 -m pip install git+https://github.com/MoravianUniversity/intro_test_runner.git`
+* You may need to enable support for HTML output in Gitkeeper's assignment configuration.
 * Use the following action.sh file (along with including the `tests.json`, `.ruff.toml`, and `_instructor_test.py` files in the testing directory):
   ```bash
   #!/bin/bash
-  python3 -m intro_test_runner -s "$1"
+  python3 -m intro_test_runner -s "$1" --html
   exit 0
   ```
 
@@ -60,32 +68,24 @@ This module provides the following functions for helping with instructor testing
 ```python
 def check_output(
   expected_output: str, func: Callable, *args,
-  _whitespace: str = 'relaxed', _ordered: bool = True, _regexp: bool = False,
-  **kwargs,
+  _whitespace: str = 'relaxed', **kwargs,
 ) -> object|None
 ```
 
 Assert that the output (written to stdout) equals `expected_output` when calling `func(*args, **kwargs)`. Return the value returned by the function call.
 
-Optionally, the `_whitespace` keyword argument can be given to determine how whitespace is compared. It can be either `'strict'` (whitespace must be exactly equal), `'relaxed'` (the default, trailing whitespace on each line is ignored), or `'ignore'` (all whitespace is ignored).
-
-The optional `_ordered` keyword can be given as `False` to cause the order of the lines to not matter when checking the output.
-
-The optional `_regexp` keyword can be given as `True` to cause the `expected` argument to be treated as as a regular expression during matching.
-
-Not all combinations of keyword arguments will produce reasonable results. Specifically, when using `_ordered=False` with `_regexp=True` or `_whitespace='ignore'`.
+Optionally, the `_whitespace` keyword argument can be given to determine how whitespace is compared. It can be either `'strict'` (whitespace must be exactly equal) or `'relaxed'` (the default, trailing whitespace on each line is ignored).
 
 ```python
 def check_output_using_user_input(
   user_input: str, expected_output: str, func: Callable, *args,
-  _whitespace: str = 'relaxed', _ordered: bool = True, _regexp: bool = False,
-  **kwargs,
+  _whitespace: str = 'relaxed', **kwargs,
 ) -> object|None
 ```
 
 Assert that the output (written to stdout) equals `expected_output` when calling `func(*args, **kwargs)` when `user_input` is provided via stdin. This asserts that all of the user input is consumed by the function call. The `expected_output` must include the user input as well. Return the value returned by the function call.
 
-The optional `_whitespace`, `_ordered`, and `_regexp` keyword arguments are treated as per `check_output_equal()`.
+The optional `_whitespace` keyword argument is treated as per `check_output_equal()`.
 
 ```python
 def check_input(user_input: str, func: Callable, *args, _must_output_args: bool = True,

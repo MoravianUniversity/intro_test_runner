@@ -85,11 +85,11 @@ def main():
     # Run tests
     try:
         with timeout(config.get("test-timeout", 5)):
-            if not test(test_files, output):
+            if not test(test_files, output, html_output=args.html):
                 problem_types.append("test")
             output.reset_faces()
             if (Path("_instructor_test.py").is_file() and
-                not test(["_instructor_test.py"], output, instructor=True)):
+                not test(["_instructor_test.py"], output, instructor=True, html_output=args.html)):
                 problem_types.append("instructor test")
     except Timeout as ex:
         output.p("⌛ The tests took too long to run and timed out. "

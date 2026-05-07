@@ -8,8 +8,22 @@ import contextlib
 import difflib
 import io
 import itertools
-import re
+import os
 
+from intro_test_runner._utils import tb_info
+
+
+HTML_OUTPUT = os.environ.get('ITR_HTML_OUTPUT', '')
+SHOW_DUMMY_LINES = False  # adds lines to the HTML diff output to keep the two sides lined up (not completely supported yet when there are user inputs)
+
+CSS_REMOVE = "background-color:#ff2e003d;border-radius:4px;"
+CSS_ADD = "background-color:#00b49047;border-radius:4px;"
+CSS_REMOVE_LINE = "background-color:#f52b0018;border-radius:4px;"
+CSS_ADD_LINE = "background-color:#00c69d1f;border-radius:4px;"
+CSS_DUMMY_LINE = "background-color:#4444441f;border-radius:4px;"
+CSS_USER_INPUT = "color:#008800;font-weight:bold;font-style:italic;"
+
+# TODO: Dark mode: #fe332153 / #00ffea3b / #ff35232b / #00ffe61e
 
 class redirect_stdin(contextlib._RedirectStream):  # noqa: SLF001, N801
     """Equivalent to the contextlib.redirect_stdout() but for stdin."""
@@ -25,46 +39,54 @@ class InputError(AssertionError):
     """An exception that indicates the input was not read correctly."""
 
 
-def _indent_lines(string: str, num_spaces: int) -> str:
+def _indent_lines(string: str, num_spaces: int=4) -> str:
     if string == '':
         return string
     spaces = ' ' * num_spaces
     return spaces + ('\n' + spaces).join(string.splitlines())
 
-def _indent_lines_maybe(string: str, num_spaces: int, no: bool) -> str:
+def _indent_lines_maybe(string: str, no: bool, num_spaces: int=4) -> str:
     return string if no else ('\n' + _indent_lines(string, num_spaces))
 
-def __strikethrough(text: str, charcode: str = '\u0334') -> str:
+def __apply_joiner(string: str, charcode: str) -> str:
+    """Applies the given charcode to every character in the string."""
+    return ''.join(ch + charcode for ch in string)
+
+def __remove(text: str, charcode: str = '\u0334') -> str:
     """
     Uses unicode combining characters to strikethrough an entire string. By
     default this uses the ~ symbol instead of - to reduce confusion when placed
     over a space. To use -, the second argument should be '\u0336'.
-    """
-    return ''.join(ch + charcode for ch in text)
 
-def __strikethrough_line(text: str, charcode: str = '\u0334') -> str:
+    If HTML_OUTPUT is enabled, this will instead use <span style='{CSS_REMOVE}'>
+    tags to strikethrough the text.
     """
-    Uses unicode combining characters to strikethrough an entire string line.
-    By default this uses the ~ symbol instead of - to reduce confusion when
-    placed over a space. To use -, the second argument should be '\u0336'.
-    """
-    return __strikethrough(text, charcode) if text else __italics("(extra blank line here)")
+    return f"<span style='{CSS_REMOVE}'>{text}</span>" if HTML_OUTPUT else __apply_joiner(text, charcode)
 
-def __underline_line(text: str, charcode: str = '\u0333') -> str:
+def __remove_line(text: str, charcode: str = '\u0334') -> str:
     """
-    Uses unicode combining characters to underline an entire string line. By
-    default this uses a double underscore instead of _ to reduce confusion when
-    placed over a space. To use _, the second argument should be '\u0332'.
+    Uses __remove() on the line, or if the line is blank, adds a comment
+    indicating that there was an extra blank line.
     """
-    return __underline(text, charcode) if text else __italics("(missing a blank line here)")
+    return __remove(text, charcode) if text else __italics("(extra blank line)")
 
-def __underline(text: str, charcode: str = '\u0333') -> str:
+def __add(text: str, charcode: str = '\u0333') -> str:
     """
     Uses unicode combining characters to underline an entire string. By default
     this uses a double underscore instead of _ to reduce confusion when placed
     over a space. To use _, the second argument should be '\u0332'.
+
+    If HTML_OUTPUT is enabled, this will instead use <span style='{CSS_ADD}'>
+    tags to underline the text.
     """
-    return ''.join(ch + charcode for ch in text)
+    return f"<span style='{CSS_ADD}'>{text}</span>" if HTML_OUTPUT else __apply_joiner(text, charcode)
+
+def __add_line(text: str, charcode: str = '\u0333') -> str:
+    """
+    Uses __add() on the line, or if the line is blank, adds a comment indicating
+    that a line was added.
+    """
+    return __add(text, charcode) if text else __italics("(missing blank line)")
 
 def __italics(string: str, charcode: str = "\u2060") -> str:
     """
@@ -72,7 +94,13 @@ def __italics(string: str, charcode: str = "\u2060") -> str:
     supported. All other characters are passed through unchanged except that
     all characters (ones changed or not) are appended with the zero-width word
     joiner unicode symbol \\u2060.
+
+    If HTML_OUTPUT is enabled, this will instead use <i> tags to italicize the
+    text.
     """
+    if HTML_OUTPUT:
+        return f"<i>{string}</i>"
+
     italic_chars = {
         'a': '𝑎', 'b': '𝑏', 'c': '𝑐', 'd': '𝑑', 'e': '𝑒', 'f': '𝑓', 'g': '𝑔', 'h': 'ℎ', 'i': '𝑖', # noqa: RUF001
         'j': '𝑗', 'k': '𝑘', 'l': '𝑙', 'm': '𝑚', 'n': '𝑛', 'o': '𝑜', 'p': '𝑝', 'q': '𝑞', 'r': '𝑟', # noqa: RUF001
@@ -100,6 +128,8 @@ def __bold(string: str, charcode: str = "\u2060") -> str:
     other characters are passed through unchanged except that all characters
     (ones changed or not) are appended with the zero-width word joiner unicode
     symbol \\u2060.
+
+    If HTML_OUTPUT is enabled, this will instead use <b> tags to bold the text.
     """
     output = ''
     for ch in string:
@@ -115,11 +145,80 @@ def __bold(string: str, charcode: str = "\u2060") -> str:
         output += charcode
     return output
 
-def __bold_substr(string: str, start: int, end: int) -> str:
+def __user_input(string: str, start: int, end: int) -> str:
     """
-    Applies bolding with __bold() to a substring, returning the complete string.
+    Applies bolding with __bold() to a string to indicate that it is user input.
+
+    If HTML_OUTPUT is enabled, this will instead use
+    <b style="{CSS_USER_INPUT}"> tags to bold the text.
     """
-    return string[:start] + __bold(string[start:end]) + string[end:]
+    substr = string[start:end]
+    substr = f"<b style='{CSS_USER_INPUT}'>{substr}</b>" if HTML_OUTPUT else __bold(substr)
+    return string[:start] + substr + string[end:]
+
+def __process_user_input(
+        output: str,
+        inpt_ranges: list[tuple[int, int]],
+        process: Callable[[str, int, int], str] = __user_input
+        ) -> str:
+    if not inpt_ranges:
+        return output
+    inpt_ranges.sort(key=lambda x: x[0], reverse=True)
+    for start, length in inpt_ranges:
+        if length <= 0:
+            continue
+        output = process(output, start, start+length)
+    return output
+
+def __highlight_user_input(output: str, inpt_ranges: list[tuple[int, int]]) -> str:
+    return _indent_lines(__process_user_input(output, inpt_ranges, __user_input))
+
+def __find_user_input(inpt: str, expected: str, last_end: int) -> int:
+    # assumes inpt contains the trailing \n
+    # TODO: this can mis-find if the input is also at the end of a line in the expected output
+    return expected.rfind(inpt, 0, last_end)
+
+def __highlight_user_input_combined(actual: str, expected: str, inpt_ranges: list[tuple[int, int]]) -> tuple[str, str]:
+    last_end = len(expected)
+    def process(string, start, end):
+        nonlocal last_end, expected
+        inpt = string[start:end]
+        index = __find_user_input(inpt, expected, last_end)
+        if index != -1:
+            expected = __user_input(expected, index, index+len(inpt))
+            last_end = index - 1
+        return __user_input(string, start, end)
+    return __process_user_input(actual, inpt_ranges, process), expected
+
+def __split_trailing_html(line: str) -> tuple[str, str]:
+    end_html = ""
+    while line[-1] == '>':
+        index = line.rfind('<', 0, -1)
+        if index == -1:
+            break
+        end_html = line[index:]
+        line = line[:index]
+    return line, end_html
+
+def __highlight_user_input_on_line(lines: list[str], line_num: int, length: int):
+    if line_num < len(lines):
+        line, end_html = __split_trailing_html(lines[line_num])
+        lines[line_num] = f"{line[:-length]}<span style='{CSS_USER_INPUT}'>{line[-length:]}</span>{end_html}"
+
+def __highlight_user_input_html(actual: str, expected: str,
+                                actual_lines: list[str], expected_lines: list[str],
+                                inpt_ranges: list[tuple[int, int]]):
+    last_end = len(expected)
+    def process(string, start, end):
+        nonlocal last_end, expected
+        __highlight_user_input_on_line(actual_lines, actual.count('\n', 0, start), end - start)
+        inpt = string[start:end]
+        index = __find_user_input(inpt, expected, last_end)
+        if index != -1:
+            __highlight_user_input_on_line(expected_lines, expected.count('\n', 0, index), len(inpt))
+            last_end = index - 1
+        return __user_input(string, start, end)
+    __process_user_input(actual, inpt_ranges, process)
 
 def __call_to_str(func: Callable, args: Sequence = (), kwargs: dict[str, object] = {}) -> str:  # noqa: B006
     sep = ', ' if args and kwargs else ''
@@ -127,10 +226,20 @@ def __call_to_str(func: Callable, args: Sequence = (), kwargs: dict[str, object]
     kwargs_repr = ', '.join(key + '=' + repr(value) for key, value in kwargs.items())
     return f"{func.__module__}.{func.__qualname__}({args}{sep}{kwargs_repr})"
 
+def __user_input_line(line: str) -> str:
+    if line == "":
+        return __italics('(empty line)')
+    elif line == " ":
+        return __italics('(line with 1 space)')
+    elif line.isspace():
+        return __italics(f'(line with {len(line)} spaces)')
+    return line
+
+def __user_input_list(inpt: str) -> str:
+    return _indent_lines('\n'.join(__user_input_line(line) for line in inpt.splitlines()))
 
 def __check_input(func: Callable, inpt: str, args: Sequence = (), kwargs: dict[str, object] = {}):  # noqa: B006
-    msg = f"""The function call was: {__call_to_str(func, args, kwargs)}
-The 'user' typed:\n{_indent_lines(inpt, 4)}\n"""
+    msg = f"User input issues with a call to `{__call_to_str(func, args, kwargs)}`\nWith the user input:\n{__user_input_list(inpt)}\n"
 
     # Prepare the simulated standard input and output
     # The input read() and readline() functions are wrapped so input also shows in the output
@@ -154,28 +263,36 @@ The 'user' typed:\n{_indent_lines(inpt, 4)}\n"""
     try:
         with contextlib.redirect_stdout(out), redirect_stdin(in_):
             retval = func(*args, **kwargs)
-    except EOFError:
+    except EOFError as ex:
         # Check for EOF
         msg += (
-            "Your program read all of the user input and then kept trying to get more input. "
-            "This is likely due to too many input() calls or validation not accepting a value "
-            "that should have been accepted.\n"
+            "All of the given user input was read and then it kept trying to get more input.\n"
+            "This is likely due to too many `input()` calls or validation not accepting a value "
+            "that it should.\n"
+            "The output/input up until the error was:\n"
         )
+        msg += __highlight_user_input(out.getvalue(), inpt_ranges)
+        msg += "\n"
+        tb = tb_info(ex.__traceback__)
+        if tb is not None:
+            msg += f"The `input()` that failed was {tb}.\n"
         raise InputError(msg) from None
 
     # Check that all of the input was used
+    output = out.getvalue()
     if in_.tell() == 0:
-        msg += 'You did not read any input at all.'
+        msg += "No input was read at all.\nThe output produced was:\n"
+        msg += __highlight_user_input(output, inpt_ranges)
         raise InputError(msg)
     rem = in_.read()
     if rem:
-        msg += 'Not all of that input was used, you stopped reading input once you got:\n'+(
-            _indent_lines(inpt[:-len(rem)].rstrip('\n').split('\n')[-1], 4))
+        msg += "Not all of the user input was read.\n"
+        msg += "The output/input up until the error was:\n"
+        msg += __highlight_user_input(output, inpt_ranges)
         raise InputError(msg)
 
-    # Leave the rest to the assert function
-    return msg, retval, out.getvalue().rstrip(), inpt_ranges
-
+    # Leave the rest to the check function
+    return retval, output, inpt_ranges
 
 def __diff_line(a: str, b: str, limit: float = 0.0) -> str|None:
     """
@@ -199,14 +316,13 @@ def __diff_line(a: str, b: str, limit: float = 0.0) -> str|None:
         if tag =='equal':
             out += a[i1:i2]
         elif tag == 'delete':
-            out += __strikethrough(a[i1:i2])
+            out += __remove(a[i1:i2])
         elif tag == 'insert':
-            out += __underline(b[j1:j2])
+            out += __add(b[j1:j2])
         elif tag == 'replace':
-            out += __strikethrough(a[i1:i2])
-            out += __underline(b[j1:j2])
+            out += __remove(a[i1:i2])
+            out += __add(b[j1:j2])
     return out
-
 
 def __diff_lines(a: list[str], b: list[str]) -> list[str]:
     """
@@ -224,123 +340,189 @@ def __diff_lines(a: list[str], b: list[str]) -> list[str]:
         if tag =='equal':
             out.extend(a[i1:i2])
         elif tag == 'delete':
-            out.extend(__strikethrough_line(a[i]) for i in range(i1, i2))
+            out.extend(__remove_line(a[i]) for i in range(i1, i2))
         elif tag == 'insert':
-            out.extend(__underline_line(b[j]) for j in range(j1, j2))
+            out.extend(__add_line(b[j]) for j in range(j1, j2))
         elif tag == 'replace':
             for a_line, b_line in zip(a[i1:i2], b[j1:j2]):
                 if (diff := __diff_line(a_line, b_line, 0.5)) is None:
                     # TODO: group some of these lines together?
-                    out.append(__strikethrough_line(a_line))
-                    out.append(__underline_line(b_line))
+                    out.append(__remove_line(a_line))
+                    out.append(__add_line(b_line))
                 else:
                     out.append(diff)
-            out.extend(__strikethrough_line(a[i]) for i in range(i1 + j2-j1, i2))
-            out.extend(__underline_line(b[j]) for j in range(j1 + i2-i1, j2))
+            out.extend(__remove_line(a[i]) for i in range(i1 + j2-j1, i2))
+            out.extend(__add_line(b[j]) for j in range(j1 + i2-i1, j2))
     return out
 
+def __diff_line_html(a: str, b: str, limit: float = 0.0) -> tuple[str, str]|None:
+    """
+    Computes a line difference between the a and b strings (in theory they
+    should be each a single line that is similar, but they can also be
+    multiples lines each (using \n)).
 
-def __check_output(msg: str, printed: str, inpt_ranges: list[tuple[int, int]], expected: str,
-                   _whitespace: str = 'relaxed', _ordered: bool = True, _regexp: bool = False):
+    Returns two strings with the changes required to get from a to b
+    respectively.
+
+    The third argument limit determines if a string should be analyzed or not.
+    If not analyzed because too much of the line has been changed, then this
+    will return None instead of the matching string. A value of 1.0 would make
+    this always return None, a value of 0.0 makes this never return None.
+    """
+    a_out = ''
+    b_out = ''
+    matcher = difflib.SequenceMatcher(a=a, b=b)
+    if limit > 0 and limit >= matcher.ratio():
+        return None
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag =='equal':
+            a_out += a[i1:i2]
+            b_out += b[j1:j2]
+        elif tag == 'delete':
+            a_out += __remove(a[i1:i2])
+        elif tag == 'insert':
+            b_out += __add(b[j1:j2])
+        elif tag == 'replace':
+            a_out += __remove(a[i1:i2])
+            b_out += __add(b[j1:j2])
+    return a_out, b_out
+
+def __span_line(contents: str, style: str) -> str:
+    return f"<span style='{style};width:100%;display:inline-block'>{contents}</span>"
+
+def __span_remove_line(contents: str) -> str:
+    return __span_line(__remove_line(contents), CSS_REMOVE_LINE)
+
+def __span_add_line(contents: str) -> str:
+    return __span_line(__add_line(contents), CSS_ADD_LINE)
+
+def __span_dummy_line() -> str:
+    return __span_line(" ", CSS_DUMMY_LINE)
+
+def __diff_lines_html(a: list[str], b: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Computes the difference between the a and b list-of-strings with each string
+    being one line. This finds equal sections of the lists and the parts that
+    need editing are run through __diff_line_html individually.
+    """
+    out_a = []
+    out_b = []
+    matcher = difflib.SequenceMatcher(a=a, b=b)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag =='equal':
+            out_a.extend(a[i1:i2])
+            out_b.extend(b[j1:j2])
+        elif tag == 'delete':
+            out_a.extend(__span_remove_line(a[i]) for i in range(i1, i2))
+            if SHOW_DUMMY_LINES:
+                out_b.extend(__span_dummy_line() for j in range(j1, j2))
+        elif tag == 'insert':
+            if SHOW_DUMMY_LINES:
+                out_a.extend(__span_dummy_line() for i in range(i1, i2))
+            out_b.extend(__span_add_line(b[j]) for j in range(j1, j2))
+        elif tag == 'replace':
+            for a_line, b_line in zip(a[i1:i2], b[j1:j2]):
+                if (diff := __diff_line_html(a_line, b_line, 0.5)) is None:
+                    out_a.append(__span_remove_line(a_line))
+                    out_b.append(__span_add_line(b_line))
+                else:
+                    diff_a, diff_b = diff
+                    out_a.append(__span_line(diff_a, CSS_REMOVE_LINE))
+                    out_b.append(__span_line(diff_b, CSS_ADD_LINE))
+            out_a.extend(__span_remove_line(a[i]) for i in range(i1 + j2-j1, i2))
+            out_b.extend(__span_add_line(b[j]) for j in range(j1 + i2-i1, j2))
+            if SHOW_DUMMY_LINES:
+                out_a.extend(__span_dummy_line() for _ in range(j1 + i2-i1, j2))
+                out_b.extend(__span_dummy_line() for _ in range(i1 + j2-j1, i2))
+    return out_a, out_b
+
+def __gen_output_message_text(
+        printed_lines: list[str], expected_lines: list[str],
+        printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
+    ) -> str:
+    printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges)
+    single_line = '\n' not in expected_orig and '\n' not in printed_orig
+    note = '(bold is user input)' if inpt_ranges else ''
+    msg = f"Expected {note}: {_indent_lines_maybe(expected_orig, single_line)}"
+    msg += f"\nActual {note}: {_indent_lines_maybe(printed_orig, single_line)}"
+    if single_line:
+        diff = __diff_line(printed_lines[0], expected_lines[0])
+    else:
+        diff = '\n'.join(__diff_lines(printed_lines, expected_lines))
+    msg += (
+        "\nDifference ( \u0333 are missing from your output, "
+        " \u0334 are extra in your output):\n"
+    )
+    msg += _indent_lines(diff)
+    return msg
+
+def __gen_output_message_html(
+        printed_lines: list[str], expected_lines: list[str],
+        printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
+    ) -> str:
+    if inpt_ranges:
+        note = f"<br><span style='font-size:smaller'><b style='{CSS_USER_INPUT}'>green</b> is user input</span>"
+    else:
+        note = ''
+    prt_diff, exp_diff = __diff_lines_html(printed_lines, expected_lines)
+    __highlight_user_input_html(printed_orig, expected_orig, prt_diff, exp_diff, inpt_ranges)
+    HEADER_STYLE="vertical-align:bottom;border-style:solid;border-color:currentColor;padding-top:0;padding-bottom:0;padding-left:8px;padding-right:8px"
+    CELL_STYLE="vertical-align:top;border-style:solid;border-color:currentColor;padding-top:8px;padding-bottom:8px;padding-left:8px;padding-right:8px"
+    PRE_STYLE="margin-top:0;margin-bottom:0;margin-left:0;margin-right:0;font-family:monospace"
+    return (
+        "<table style='color:black;background-color:white;border-collapse:collapse;margin-top:6px'><tr>"
+        f"<th style='{HEADER_STYLE};border-width:0 1px 1px 0'>Expected<br><span style='font-size:smaller'><span style='{CSS_ADD}'>Highlights</span> are missing from your output</span>{note}</th>"
+        f"<th style='{HEADER_STYLE};border-width:0 0 1px 0'>Actual<br><span style='font-size:smaller'><span style='{CSS_REMOVE}'>Highlights</span> are extra in your output</span>{note}</th></tr>"
+        f"<td style='{CELL_STYLE};border-width:0 1px 0 0'><pre style='{PRE_STYLE}'>{'\n'.join(exp_diff)}</pre></td>"
+        f"<td style='{CELL_STYLE};border-width:0 0 0 0'><pre style='{PRE_STYLE}'>{'\n'.join(prt_diff)}</pre></td></tr></table>"
+    )
+
+def __check_output(call_str, printed: str, inpt_ranges: list[tuple[int, int]], expected: str,
+                   _whitespace: str = 'relaxed'):
     printed_orig = printed
-    # TODO: compare without input ranges or add input to expected
-    #for start, length in inpt_ranges:
-    #    printed = printed[:start] + printed[start+length:]
     expected_orig = expected
     if _whitespace == 'relaxed':
-        printed = '\n'.join(line.rstrip() for line in printed_orig.rstrip('\n').split('\n'))
-        expected = '\n'.join(line.rstrip() for line in expected.rstrip('\n').split('\n'))
-    elif _whitespace == 'ignore':
-        printed = ''.join(printed_orig.split())
-        expected = ''.join(expected.split())
-    elif _whitespace == 'strict':
-        printed = printed_orig
-
-    if not _ordered or not _regexp:
-        printed = printed.split('\n')
-        expected = expected.split('\n')
-
-    if not _ordered:
-        printed.sort()
-        expected.sort()
+        printed_lines = [line.rstrip() for line in printed_orig.rstrip('\n').split('\n')]
+        expected_lines = [line.rstrip() for line in expected.rstrip('\n').split('\n')]
+    else:
+        printed_lines = printed.split('\n')
+        expected_lines = expected.split('\n')
 
     # Check for match - return if match
-    if not _regexp:
-        if printed == expected:
-            return
-    elif isinstance(printed, list):
-        if any(re.search(e, p) is not None for e, p in zip(expected, printed)):
-            return
-    elif re.search(expected, printed) is not None:
+    if printed_lines == expected_lines:
         return
 
-    single_line = '\n' not in expected_orig and '\n' not in printed_orig
-    exp_note = actual_note = ''
-    if _regexp:
-        exp_note = ' (this is a regular-expression, so will likely look cryptic)'
-    if inpt_ranges:
-        inpt_ranges.sort(key=lambda x: x[0], reverse=True)
-        for start, length in inpt_ranges:
-            printed_orig = __bold_substr(printed_orig, start, start+length)
-        exp_note += ' (including user input)'
-        actual_note = ' (bold text is user input)'
-    msg += f"Expected output{exp_note}: {_indent_lines_maybe(expected_orig, 4, single_line)}"
-    msg += f"\nActual output{actual_note}: {_indent_lines_maybe(printed_orig, 4, single_line)}"
-    if not _regexp and _whitespace != 'ignore':
-        # diffs not supported for whitespace='ignore' or _regexp
-        # TODO: support whitespace='ignore'
-        if single_line:
-            diff = __diff_line(printed[0], expected[0])
-        else:
-            diff = '\n'.join(__diff_lines(printed, expected))
-        msg += (
-            "\nDifference ( \u0333 are things your output is missing, "
-            " \u0334 are things your output has extra):\n"
-        )
-        msg += _indent_lines(diff, 4)
-
-    if _whitespace == 'ignore':
-        msg += '\nNote: all whitespace is ignored'
-    if not _ordered:
-        msg += '\nNote: order of the lines does not matter'
+    msg = f"Output mismatch for function call: `{call_str}`\n"
+    if HTML_OUTPUT:
+        msg += __gen_output_message_html(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
+    else:
+        msg += __gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
 
     raise OutputError(msg)
 
-
 def check_output(
         expected_output: str, func: Callable, *args: object|None,
-        _whitespace: str = 'relaxed', _ordered: bool = True, _regexp: bool = False,
+        _whitespace: str = 'relaxed',
         **kwargs: object|None,
 ) -> object|None:
     """
-    Assert that the output (written to stdout) equals the expected output. The function object must
+    Check that the output (written to stdout) equals the expected output. The function object must
     be passed in (not already called). If it takes arguments, they can be passed in the args and
     kwargs arguments.
 
     Optionally, the _whitespace keyword argument can be given to determine how whitespace is
-    compared. It can be either 'strict' (whitespace must be exactly equal), 'relaxed' (the default,
-    trailing whitespace on each line is ignored), or 'ignore' (all whitespace is ignored).
-
-    The optional _ordered keyword can be given as False to cause the order of the lines to not
-    matter when checking the output. This is not compatible with ignoring the whitespace.
-
-    The optional _regexp keyword can be given as True to cause the `expected` argument to be
-    treated as as a regular expression during matching.
-
-    Not all combinations of keyword arguments will produce reasonable results. Specifically,
-    when using _ordered=False with _regexp=True or _whitespace='ignore'.
+    compared. It can be either 'strict' (whitespace must be exactly equal) or 'relaxed' (the
+    default, trailing whitespace on each line is ignored).
     """
-    msg = f"The function call was: {__call_to_str(func, args, kwargs)}\n"
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         retval = func(*args, **kwargs)
-    __check_output(msg, out.getvalue(), [], expected_output, _whitespace, _ordered, _regexp)
+    __check_output(__call_to_str(func, args, kwargs), out.getvalue(), [], expected_output, _whitespace)
     return retval
 
 def check_output_using_user_input(
         user_input: str, expected_output: str, func: Callable, *args: object|None,
-        _whitespace: str = 'relaxed', _ordered: bool = True, _regexp: bool = False,
-        **kwargs: object|None,
+        _whitespace: str = 'relaxed', **kwargs: object|None,
 ) -> object|None:
     """
     Check that the output (written to stdout) equals the expected_output. The callable must be
@@ -348,11 +530,10 @@ def check_output_using_user_input(
     kwargs arguments. Additionally, the function grabs user input (from stdin) and this is checked
     for as well. The input is given in the user_input argument and is added to the printed output.
 
-    The optional _whitespace, _ordered, and _regexp keyword arguments are treated as per
-    check_output_equal().
+    The optional _whitespace keyword argument is treated as per check_output().
     """
-    msg, retval, out, inpt_ranges = __check_input(func, user_input, args, kwargs)
-    __check_output(msg, out, inpt_ranges, expected_output, _whitespace, _ordered, _regexp)
+    retval, out, inpt_ranges = __check_input(func, user_input, args, kwargs)
+    __check_output(__call_to_str(func, args, kwargs), out, inpt_ranges, expected_output, _whitespace)
     return retval
 
 def check_input(user_input: str, func: Callable, *args: object|None, _must_output_args: bool = True,
@@ -364,14 +545,14 @@ def check_input(user_input: str, func: Callable, *args: object|None, _must_outpu
     settings _must_output_args=False this will not be checked.
     """
     # Call the function and deal with input checks
-    msg, retval, out, _ = __check_input(func, user_input, args, kwargs)
+    retval, out, inpt_ranges = __check_input(func, user_input, args, kwargs)
 
     # Check that all the pieces of text showed up in the output
     if _must_output_args:
         for arg in itertools.chain(args, kwargs.values()):
             if isinstance(arg, str) and arg not in out:
-                msg += f'The argument value "{arg}" was supposed to appear in the output.\n'
-                msg += f'The actual output was:\n{_indent_lines(out, 4)}'
+                msg = f'The argument value "{arg}" was supposed to appear in the output when calling `{__call_to_str(func, args, kwargs)}`\n'
+                msg += f'The actual output/input was:\n{__highlight_user_input(out, inpt_ranges)}'
                 raise OutputError(msg)
 
     return retval
@@ -379,7 +560,7 @@ def check_input(user_input: str, func: Callable, *args: object|None, _must_outpu
 @contextlib.contextmanager
 def no_print(
     print_func_okay: bool = False,
-    msg: str = "You are not allowed to use print(), instead use return values",
+    msg: str = "You are not allowed to use `print()`, instead use return values",
 ):
     """
     Context manager that raises an assert error if print() is called (with any file) or if
@@ -403,7 +584,7 @@ def no_print(
                 raise OutputError(msg)
 
 @contextlib.contextmanager
-def no_input(msg: str = "You are not allowed to use input(), instead use parameters"):
+def no_input(msg: str = "You are not allowed to use `input()`, instead use parameters"):
     """
     Context manager that raises an assert error if input() is called or if sys.stdin is read from
     by any source. Has the side effect that this will suppress any EOFError exceptions. Used like:
