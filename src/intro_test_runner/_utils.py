@@ -41,7 +41,7 @@ def ast_eq(node1: ast.AST | list[ast.AST], node2: ast.AST | list[ast.AST]) -> bo
 
 
 REALLY_BAD = "😣😖😠😡🤬👿💀"               # :-(
-MED_BAD = "😕😟😔😩😫😮‍💨😤"                  # :-{
+MED_BAD = "😕😟😔😩😫😤"                    # :-{
 BAD = "😒😞🙁🥺😢😭😳😨😬😦😧🤕"            # :-|
 GOOD = "😀😄😁😊😇🙂😋🤓😎🤩🥳🤗🤭🤠😺😸"   # :-)
 FACES = {
@@ -55,7 +55,10 @@ class Output:
     """Class to generate output in different formats."""
     def __init__(self):
         self.text = ""
-        self.html = "<html><body>"
+        self.html = ("<!DOCTYPE html>\n<html lang='en'><head>"
+                     "<meta charset='utf-8'>"
+                     "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'>"
+                     "</head><body>")
         self.faces = {
             ":-(": "",
             ":-{": "",
