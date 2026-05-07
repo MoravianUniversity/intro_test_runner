@@ -210,26 +210,26 @@ def _is_forwarding_call(call: ast.expr, func: ast.FunctionDef) -> bool:
     return args <= params
 
 
-def _is_useless_func(func: ast.FunctionDef) -> bool:
+def _is_useless_func(func: ast.FunctionDef) -> int:
     # A useless function is one that follows one of the following patterns (not counting docstrings):
-    #  - just a pass
-    #  - just a return of a constant value
-    #  - just a call to another function with the same (or less) arguments
-    #  - just a call to another function with the same (or less) arguments and returning its result
+    #  - just a pass (1)
+    #  - just a return of a constant value (1)
+    #  - just a call to another function with the same (or less) arguments (2)
+    #  - just a call to another function with the same (or less) arguments and returning its result (2)
     body = func.body
     # Remove all bare strings and passes
     body = [stmt for stmt in body if not _is_docstring(stmt) and not isinstance(stmt, ast.Pass)]
     if len(body) == 0:
-        return True
+        return 1
     if len(body) == 1:
         stmt = body[0]
         if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Constant):
-            return True
+            return 1
         if isinstance(stmt, ast.Expr) and _is_forwarding_call(stmt.value, func):
-            return True
+            return 2
         if isinstance(stmt, ast.Return) and (stmt.value is None or _is_forwarding_call(stmt.value, func)):
-            return True
-    return False
+            return 2
+    return 0
 
 
 def _check_for_useless_funcs(
@@ -239,8 +239,10 @@ def _check_for_useless_funcs(
 ) -> bool:
     good = True
     for func in funcs:
-        if _is_useless_func(func):
-            output.p(f":-| The `{func.name}()` function in `{name(file, True)}` does not seem to do anything.")
+        useless = _is_useless_func(func)
+        if useless != 0:
+            msg = "just a pass or returning a constant value" if useless == 1 else "it only calls a single other function with no new arguments"
+            output.p(f":-| The `{func.name}()` function in `{name(file, True)}` seems useless ({msg}).")
             good = False
     return good
 
