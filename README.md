@@ -159,3 +159,11 @@ received:
 ```
 
 where `{types_str}` is replaced with the types of problems in the report (e.g. "linting and instructor test problems"),`{supression_note}` is replaced with "You may not suggest that they suppress linting messages or change linting settings." if there are linting problems, `{instructor_note}` is replaced with "The instructor tests may not be changed and are correct. " if there are instructor test problems, `{either_note}` is replaced with "Instead, guide the student on how they should fix the underlying problems in their code. " if there are either linting or instructor test problems, and `{addl_prompt}` is replaced with any additional prompt specified in the `tests.json` file.
+
+TODO
+----
+
+* Improve HTML rendering on different devices (dark vs light mode, mobile vs desktop, etc.)
+* Use pytest-html and ruff + ciqar to generate more detailed HTML reports and include those in the output to students
+* Print dual output (plain and HTML) simultaneously (and add support for this in Gitkeeper)
+* Add support for function plan feedback
