@@ -524,7 +524,7 @@ def __check_output(call_str, printed: str, inpt_ranges: list[tuple[int, int]], e
     if printed_lines == expected_lines:
         return
 
-    msg = f"Output <>& mismatch for function call: `{call_str}`\n"
+    msg = f"Output mismatch for function call: `{call_str}`\n"
     if HTML_OUTPUT:
         msg += __gen_output_message_html(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
     else:
