@@ -7,7 +7,8 @@ from pathlib import Path
 import ast
 import shutil
 
-from ._utils import ast_eq, name, Output
+from ._output import Output
+from ._utils import ast_eq, name
 
 
 def copy_files(src: str, paths: Sequence[str]) -> list[str]:

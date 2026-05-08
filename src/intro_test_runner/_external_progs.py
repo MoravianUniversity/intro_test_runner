@@ -9,7 +9,8 @@ import re
 import subprocess
 import requests
 
-from ._utils import Output, name
+from ._output import Output
+from ._utils import name
 
 
 def lint(files: Sequence[str|Path], output: Output) -> bool:
@@ -42,8 +43,8 @@ def lint(files: Sequence[str|Path], output: Output) -> bool:
             output.p(":-{ Your submission has style issues. Please fix them and try again. The links tell you more about the errors and how to fix them.")
             out = result.stdout.strip()
             err = result.stderr.strip()
-            output.pre_terminal(__ruff_linkify(out), out)
-            output.pre_terminal(__ruff_linkify(err), err)
+            output.pre_terminal(out, __ruff_linkify)
+            output.pre_terminal(err, __ruff_linkify)
             return False
     except FileNotFoundError:
         output.p("⁉️ `ruff` is not installed or not found in `PATH`. "
@@ -54,7 +55,9 @@ def lint(files: Sequence[str|Path], output: Output) -> bool:
 
 def __ruff_linkify(text: str) -> str:
     """Convert ruff output error codes into links to the relevant webpage."""
-    return re.sub(r'^(\s+\d+(?:\x1b\[(?:[0-9;]*)?m)?:(?:\x1b\[(?:[0-9;]*)?m)?\d+\s+)(\x1b\[(?:[0-9;]*)?m)?([A-Z]+\d+)(\x1b\[(?:[0-9;]*)?m)?(\s)',
+    # color_code = r'\x1b\[(?:[0-9;]*)?m'  # matches ANSI color codes like \x1b[31m or \x1b[0m
+    color_code = r'<span style="[^"]*">|</span>'  # matches HTML span tags with color styles like <span style="color:red">
+    return re.sub(rf'^(\s+\d+(?:{color_code})?:(?:{color_code})?\d+\s+)({color_code})?([A-Z]+\d+)({color_code})?(\s)',
                   r'\1\2<a href="https://docs.astral.sh/ruff/rules/\3" title="Ruff Rule \3" style="color:inherit;text-decoration:underline currentColor;">\3</a>\4\5',
                   text, flags=re.MULTILINE)
 
@@ -156,6 +159,8 @@ def llm_summary(
     prompt = f"{prompt_header}\n\n{instructor_results}\n"
     try:
         summary = llm_chat(prompt, host=llm_host, model=llm_model)
+        output.br()
+        output.hr()
         output.br()
         output.p("💡 The above was run through the AI tutor and the following feedback was generated:\n"
                     "(remember: this is an automated summary and may have mistakes)")

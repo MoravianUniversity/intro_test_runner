@@ -9,6 +9,7 @@ import difflib
 import io
 import itertools
 import os
+import html
 
 from intro_test_runner._utils import tb_info
 
@@ -16,11 +17,11 @@ from intro_test_runner._utils import tb_info
 HTML_OUTPUT = os.environ.get('ITR_HTML_OUTPUT', '')
 SHOW_DUMMY_LINES = False  # adds lines to the HTML diff output to keep the two sides lined up (not completely supported yet when there are user inputs)
 
-CSS_REMOVE = "background-color:#ff2e003d;border-radius:4px;"
-CSS_ADD = "background-color:#00b49047;border-radius:4px;"
-CSS_REMOVE_LINE = "background-color:#f52b0018;border-radius:4px;"
-CSS_ADD_LINE = "background-color:#00c69d1f;border-radius:4px;"
-CSS_DUMMY_LINE = "background-color:#4444441f;border-radius:4px;"
+CSS_REMOVE = "background-color:#ff2e003d;border-radius:3px;"
+CSS_ADD = "background-color:#00b49047;border-radius:3px;"
+CSS_REMOVE_LINE = "background-color:#f52b0018;border-radius:3px;"
+CSS_ADD_LINE = "background-color:#00c69d1f;border-radius:3px;"
+CSS_DUMMY_LINE = "background-color:#4444441f;border-radius:3px;"
 CSS_USER_INPUT = "color:#008800;font-weight:bold;font-style:italic;"
 
 # TODO: Dark mode: #fe332153 / #00ffea3b / #ff35232b / #00ffe61e
@@ -47,6 +48,22 @@ def _indent_lines(string: str, num_spaces: int=4) -> str:
 
 def _indent_lines_maybe(string: str, no: bool, num_spaces: int=4) -> str:
     return string if no else ('\n' + _indent_lines(string, num_spaces))
+
+def __html_pretrans(output: str) -> str:
+    # we need to make sure we encode the HTML, but that messes with the indices
+    # so instead we convert them to other characters first, then process, then convert them to HTML entities
+    return output.translate(str.maketrans('&<>', '\u0001\u0002\u0003')) if HTML_OUTPUT else output
+
+def __html_posttrans(output: str) -> str:
+    escapes = {
+        '\u0001': '&amp;',
+        '\u0002': '&lt;',
+        '\u0003': '&gt;',
+    }
+    return ''.join(escapes.get(ch, ch) for ch in output) if HTML_OUTPUT else output
+
+def __maybe_html_escape(string: str) -> str:
+    return html.escape(string) if HTML_OUTPUT else string
 
 def __apply_joiner(string: str, charcode: str) -> str:
     """Applies the given charcode to every character in the string."""
@@ -153,42 +170,52 @@ def __user_input(string: str, start: int, end: int) -> str:
     <b style="{CSS_USER_INPUT}"> tags to bold the text.
     """
     substr = string[start:end]
-    substr = f"<b style='{CSS_USER_INPUT}'>{substr}</b>" if HTML_OUTPUT else __bold(substr)
+    faux_bold = __bold(substr)
+    if HTML_OUTPUT:
+        substr = f"<b style='{CSS_USER_INPUT}' data-plain-text='{html.escape(faux_bold)}'>{html.escape(substr)}</b>"
+    else:
+        substr = faux_bold
     return string[:start] + substr + string[end:]
 
 def __process_user_input(
         output: str,
         inpt_ranges: list[tuple[int, int]],
-        process: Callable[[str, int, int], str] = __user_input
+        process: Callable[[str, int, int], str] = __user_input,
         ) -> str:
-    if not inpt_ranges:
-        return output
-    inpt_ranges.sort(key=lambda x: x[0], reverse=True)
-    for start, length in inpt_ranges:
-        if length <= 0:
-            continue
-        output = process(output, start, start+length)
-    return output
+    output = __html_pretrans(output)
+    if inpt_ranges:
+        inpt_ranges.sort(key=lambda x: x[0], reverse=True)
+        for start, length in inpt_ranges:
+            if length <= 0:
+                continue
+            output = process(output, start, start+length)
+    return __html_posttrans(output)
 
 def __highlight_user_input(output: str, inpt_ranges: list[tuple[int, int]]) -> str:
     return _indent_lines(__process_user_input(output, inpt_ranges, __user_input))
-
+    
 def __find_user_input(inpt: str, expected: str, last_end: int) -> int:
     # assumes inpt contains the trailing \n
     # TODO: this can mis-find if the input is also at the end of a line in the expected output
     return expected.rfind(inpt, 0, last_end)
 
 def __highlight_user_input_combined(actual: str, expected: str, inpt_ranges: list[tuple[int, int]]) -> tuple[str, str]:
-    last_end = len(expected)
-    def process(string, start, end):
-        nonlocal last_end, expected
-        inpt = string[start:end]
-        index = __find_user_input(inpt, expected, last_end)
-        if index != -1:
-            expected = __user_input(expected, index, index+len(inpt))
-            last_end = index - 1
-        return __user_input(string, start, end)
-    return __process_user_input(actual, inpt_ranges, process), expected
+    global HTML_OUTPUT
+    orig_html_output = HTML_OUTPUT
+    try:
+        HTML_OUTPUT = False  # this always generates plain text
+        last_end = len(expected)
+        def process(string, start, end):
+            nonlocal last_end, expected
+            inpt = string[start:end]
+            index = __find_user_input(inpt, expected, last_end)
+            if index != -1:
+                expected = __user_input(expected, index, index+len(inpt))
+                last_end = index - 1
+            return __user_input(string, start, end)
+        return __process_user_input(actual, inpt_ranges, process), expected
+    finally:
+        HTML_OUTPUT = orig_html_output
 
 def __split_trailing_html(line: str) -> tuple[str, str]:
     end_html = ""
@@ -460,17 +487,22 @@ def __gen_output_message_html(
         printed_lines: list[str], expected_lines: list[str],
         printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
     ) -> str:
+    plain = html.escape(__gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges))
+    printed_lines = [__html_pretrans(line) for line in printed_lines]
+    expected_lines = [__html_pretrans(line) for line in expected_lines]
+    prt_diff, exp_diff = __diff_lines_html(printed_lines, expected_lines)
+    __highlight_user_input_html(printed_orig, expected_orig, prt_diff, exp_diff, inpt_ranges)
+    prt_diff = [__html_posttrans(line) for line in prt_diff]
+    exp_diff = [__html_posttrans(line) for line in exp_diff]
+    HEADER_STYLE="vertical-align:bottom;border-style:solid;border-color:currentColor;padding-top:0;padding-bottom:0;padding-left:8px;padding-right:8px"
+    CELL_STYLE="vertical-align:top;border-style:solid;border-color:currentColor;padding-top:8px;padding-bottom:8px;padding-left:8px;padding-right:8px"
+    PRE_STYLE="margin-top:0;margin-bottom:0;margin-left:0;margin-right:0;font-family:monospace"
     if inpt_ranges:
         note = f"<br><span style='font-size:smaller'><b style='{CSS_USER_INPUT}'>green</b> is user input</span>"
     else:
         note = ''
-    prt_diff, exp_diff = __diff_lines_html(printed_lines, expected_lines)
-    __highlight_user_input_html(printed_orig, expected_orig, prt_diff, exp_diff, inpt_ranges)
-    HEADER_STYLE="vertical-align:bottom;border-style:solid;border-color:currentColor;padding-top:0;padding-bottom:0;padding-left:8px;padding-right:8px"
-    CELL_STYLE="vertical-align:top;border-style:solid;border-color:currentColor;padding-top:8px;padding-bottom:8px;padding-left:8px;padding-right:8px"
-    PRE_STYLE="margin-top:0;margin-bottom:0;margin-left:0;margin-right:0;font-family:monospace"
     return (
-        "<table style='color:black;background-color:white;border-collapse:collapse;margin-top:6px'><tr>"
+        f"<table style='color:black;background-color:white;border-collapse:collapse;margin-top:6px' data-plain-text='{plain}'><tr>"
         f"<th style='{HEADER_STYLE};border-width:0 1px 1px 0'>Expected<br><span style='font-size:smaller'><span style='{CSS_ADD}'>Highlights</span> are missing from your output</span>{note}</th>"
         f"<th style='{HEADER_STYLE};border-width:0 0 1px 0'>Actual<br><span style='font-size:smaller'><span style='{CSS_REMOVE}'>Highlights</span> are extra in your output</span>{note}</th></tr>"
         f"<td style='{CELL_STYLE};border-width:0 1px 0 0'><pre style='{PRE_STYLE}'>{'\n'.join(exp_diff)}</pre></td>"
@@ -492,7 +524,7 @@ def __check_output(call_str, printed: str, inpt_ranges: list[tuple[int, int]], e
     if printed_lines == expected_lines:
         return
 
-    msg = f"Output mismatch for function call: `{call_str}`\n"
+    msg = f"Output <>& mismatch for function call: `{call_str}`\n"
     if HTML_OUTPUT:
         msg += __gen_output_message_html(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
     else:

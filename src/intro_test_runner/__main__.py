@@ -7,7 +7,8 @@ from pathlib import Path
 import json
 import signal
 
-from ._utils import Output, tb_info
+from ._output import Output
+from ._utils import tb_info
 from ._external_progs import lint, test, llm_summary
 from ._internal_checks import check_module, check_text_file, check_all, copy_files, check_tests
 
