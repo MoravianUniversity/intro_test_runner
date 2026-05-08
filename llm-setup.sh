@@ -42,3 +42,6 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target" | sudo tee /etc/systemd/system/llama-server.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now llama-server
+
+sudo firewall-cmd --add-port=30000/tcp --permanent
+sudo firewall-cmd --reload
