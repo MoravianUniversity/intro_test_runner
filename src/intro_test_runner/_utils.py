@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from itertools import zip_longest
 import ast
+import traceback
 from types import TracebackType
 
 def name(path: Path|str, no_ext: bool = False) -> str:
@@ -33,11 +34,12 @@ def tb_info(tb: TracebackType|None, base: str|None = None) -> str|None:
     if base is None:
         base = os.getcwd()
     base = os.path.abspath(base)
-    frame = tb.tb_frame
-    while frame:
-        file = frame.f_globals.get('__file__')
-        if isinstance(file, str) and base in os.path.abspath(file):
+    for frame in traceback.extract_tb(tb):
+        file = frame.filename
+        if isinstance(file, str) and os.path.abspath(file).startswith(base) and not file.endswith("_instructor_test.py"):
             file = os.path.relpath(file, base)
-            return f"in file `{file}` at line {frame.f_lineno}"
-        frame = frame.f_back
+            func_name = frame.name
+            if func_name:
+                return f"in file `{file}` on line {frame.lineno}, in function {func_name}()"
+            return f"in file `{file}` on line {frame.lineno}"
     return None
