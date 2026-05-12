@@ -10,7 +10,8 @@ import subprocess
 import requests
 
 from ._output import Output
-from ._utils import name
+from ._utils import name, unicode_unbold, unicode_unitalics
+from ._check_io import BOLD_NOTE, DIFFERENCE_NOTE
 
 
 def lint(files: Sequence[str|Path], output: Output, html_output: bool = False) -> bool:
@@ -159,6 +160,11 @@ def llm_summary(
         either_note=either_note,
         addl_prompt=addl_prompt
     )
+
+    # Clean up the text for things that may confuse the LLM
+    instructor_results = unicode_unbold(unicode_unitalics(instructor_results.strip().replace(BOLD_NOTE, "")))
+    instructor_results = instructor_results.split(DIFFERENCE_NOTE)[0]  # remove the difference chunk
+
     prompt = f"{prompt_header}\n\n{instructor_results}\n"
     try:
         summary = llm_chat(prompt, host=llm_host, model=llm_model)

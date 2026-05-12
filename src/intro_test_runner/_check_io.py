@@ -11,7 +11,7 @@ import itertools
 import os
 import html
 
-from intro_test_runner._utils import tb_info
+from intro_test_runner._utils import tb_info, unicode_bold, unicode_italics
 
 
 HTML_OUTPUT = os.environ.get('ITR_HTML_OUTPUT', '')
@@ -23,6 +23,13 @@ CSS_REMOVE_LINE = "background-color:#f52b0018;border-radius:3px;"
 CSS_ADD_LINE = "background-color:#00c69d1f;border-radius:3px;"
 CSS_DUMMY_LINE = "background-color:#4444441f;border-radius:3px;"
 CSS_USER_INPUT = "color:#008800;font-weight:bold;font-style:italic;"
+
+BOLD_NOTE = " (bold is user input)"
+ADD_CHAR = '\u0333'  # unicode character (double underline) that goes under the previous character, used to indicate additions in a diff
+REMOVE_CHAR = '\u0334'  # unicode character (squiggle strikethrough) that goes through the previous character, used to indicate removals in a diff
+DIFFERENCE_NOTE = (f"\nDifference ( {ADD_CHAR} are missing from your output,"
+                   f"  {REMOVE_CHAR} are extra in your output):\n")
+
 
 # TODO: Dark mode: #fe332153 / #00ffea3b / #ff35232b / #00ffe61e
 
@@ -42,6 +49,10 @@ class InputError(AssertionError):
 
 @contextlib.contextmanager
 def no_html():
+    """
+    A context manager that temporarily disables HTML output (even if the
+    environment variable is set).
+    """
     global HTML_OUTPUT
     original = HTML_OUTPUT
     HTML_OUTPUT = False
@@ -73,14 +84,11 @@ def __html_posttrans(output: str) -> str:
     }
     return ''.join(escapes.get(ch, ch) for ch in output) if HTML_OUTPUT else output
 
-def __maybe_html_escape(string: str) -> str:
-    return html.escape(string) if HTML_OUTPUT else string
-
 def __apply_joiner(string: str, charcode: str) -> str:
     """Applies the given charcode to every character in the string."""
     return ''.join(ch + charcode for ch in string)
 
-def __remove(text: str, charcode: str = '\u0334') -> str:
+def __remove(text: str, charcode: str = REMOVE_CHAR) -> str:
     """
     Uses unicode combining characters to strikethrough an entire string. By
     default this uses the ~ symbol instead of - to reduce confusion when placed
@@ -91,14 +99,14 @@ def __remove(text: str, charcode: str = '\u0334') -> str:
     """
     return f"<span style='{CSS_REMOVE}'>{text}</span>" if HTML_OUTPUT else __apply_joiner(text, charcode)
 
-def __remove_line(text: str, charcode: str = '\u0334') -> str:
+def __remove_line(text: str, charcode: str = REMOVE_CHAR) -> str:
     """
     Uses __remove() on the line, or if the line is blank, adds a comment
     indicating that there was an extra blank line.
     """
     return __remove(text, charcode) if text else __italics("(extra blank line)")
 
-def __add(text: str, charcode: str = '\u0333') -> str:
+def __add(text: str, charcode: str = ADD_CHAR) -> str:
     """
     Uses unicode combining characters to underline an entire string. By default
     this uses a double underscore instead of _ to reduce confusion when placed
@@ -109,72 +117,28 @@ def __add(text: str, charcode: str = '\u0333') -> str:
     """
     return f"<span style='{CSS_ADD}'>{text}</span>" if HTML_OUTPUT else __apply_joiner(text, charcode)
 
-def __add_line(text: str, charcode: str = '\u0333') -> str:
+def __add_line(text: str, charcode: str = ADD_CHAR) -> str:
     """
     Uses __add() on the line, or if the line is blank, adds a comment indicating
     that a line was added.
     """
     return __add(text, charcode) if text else __italics("(missing blank line)")
 
-def __italics(string: str, charcode: str = "\u2060") -> str:
+def __italics(string: str) -> str:
     """
-    Italicizes a string using unicode. Only letters and parentheses are
-    supported. All other characters are passed through unchanged except that
-    all characters (ones changed or not) are appended with the zero-width word
-    joiner unicode symbol \\u2060.
-
-    If HTML_OUTPUT is enabled, this will instead use <i> tags to italicize the
-    text.
+    Italicizes a string. If HTML_OUTPUT is enabled, this will use <i> tags to
+    italicize the text. Otherwise, this will use unicode italic characters to
+    italicize the text (which only supports letters and parentheses).
     """
-    if HTML_OUTPUT:
-        return f"<i>{string}</i>"
+    return f"<i>{string}</i>" if HTML_OUTPUT else unicode_italics(string)
 
-    italic_chars = {
-        'a': '𝑎', 'b': '𝑏', 'c': '𝑐', 'd': '𝑑', 'e': '𝑒', 'f': '𝑓', 'g': '𝑔', 'h': 'ℎ', 'i': '𝑖', # noqa: RUF001
-        'j': '𝑗', 'k': '𝑘', 'l': '𝑙', 'm': '𝑚', 'n': '𝑛', 'o': '𝑜', 'p': '𝑝', 'q': '𝑞', 'r': '𝑟', # noqa: RUF001
-        's': '𝑠', 't': '𝑡', 'u': '𝑢', 'v': '𝑣', 'w': '𝑤', 'x': '𝑥', 'y': '𝑦', 'z': '𝑧', # noqa: RUF001
-        'A': '𝐴', 'B': '𝐵', 'C': '𝐶', 'D': '𝐷', 'E': '𝐸', 'F': '𝐹', 'G': '𝐺', 'H': '𝐻', 'I': '𝐼', # noqa: RUF001
-        'J': '𝐽', 'K': '𝐾', 'L': '𝐿', 'M': '𝑀', 'N': '𝑁', 'O': '𝑂', 'P': '𝑃', 'Q': '𝑄', 'R': '𝑅', # noqa: RUF001
-        'S': '𝑆', 'T': '𝑇', 'U': '𝑈', 'V': '𝑉', 'W': '𝑊', 'X': '𝑋', 'Y': '𝑌', 'Z': '𝑍', # noqa: RUF001
-        '(': '〈', ')': '〉',
-    }
-    output = ''
-    for ch in string:
-        output += italic_chars.get(ch, ch) + charcode
-    return output
-
-ORD_0 = ord('0')
-ORD_9 = ord('9')
-ORD_A = ord('A')
-ORD_Z = ord('Z')
-ORD_a = ord('a')
-ORD_z = ord('z')
-
-def __bold(string: str, charcode: str = "\u2060") -> str:
+def __bold(string: str) -> str:
     """
-    Bolds a string using unicode. Only letters and digits are supported. All
-    other characters are passed through unchanged except that all characters
-    (ones changed or not) are appended with the zero-width word joiner unicode
-    symbol \\u2060.
-
-    If HTML_OUTPUT is enabled, this will instead use <b> tags to bold the text.
+    Bolds a string. If HTML_OUTPUT is enabled, this will use <b> tags to bold
+    the text. Otherwise, this will use unicode bold characters to bold the
+    text (which only supports letters and digits).
     """
-    if HTML_OUTPUT:
-        return f'<b>{string}</b>'
-
-    output = ''
-    for ch in string:
-        x = ord(ch)
-        if ORD_0 <= x <= ORD_9: # numbers
-            output += chr(x+120812-ORD_0)
-        elif ORD_A <= x <= ORD_Z: # uppercase
-            output += chr(x+120276-ORD_A)
-        elif ORD_a <= x <= ORD_z: # lowercase
-            output += chr(x+120302-ORD_a)
-        else:
-            output += ch
-        output += charcode
-    return output
+    return f'<b>{string}</b>' if HTML_OUTPUT else unicode_bold(string)
 
 def __user_input(string: str, start: int, end: int) -> str:
     """
@@ -480,7 +444,7 @@ def __gen_output_message_text(
     with no_html():
         printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges)
         single_line = '\n' not in expected_orig and '\n' not in printed_orig
-        note = ' (bold is user input)' if inpt_ranges else ''
+        note = BOLD_NOTE if inpt_ranges else ''
         msg = f"Expected{note}: {_indent_lines_maybe(expected_orig, single_line)}"
         msg += f"\nActual{note}: {_indent_lines_maybe(printed_orig, single_line)}"
         if single_line:
