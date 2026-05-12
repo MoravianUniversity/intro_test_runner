@@ -51,7 +51,6 @@ def main():
     parser.add_argument("--html", action="store_true",
                         help="Generate HTML output")
     args = parser.parse_args()
-    src = args.src
 
     # Read the test configuration
     with open(args.config, encoding="utf-8") as f:
@@ -65,7 +64,7 @@ def main():
     test_files = [f"{name}_test.py" for name, conf in modules.items() if check_tests(conf)]
 
     # Copy files from source directory (this is fatal if any are missing)
-    missing_files = copy_files(src, py_files + test_files + list(text_files))
+    missing_files = copy_files(args.src, py_files + test_files + list(text_files))
     if missing_files:
         for path_str in missing_files:
             output.p(f":-( Your submission does not include `{path_str}` at all.")
@@ -75,7 +74,7 @@ def main():
         return
 
     # Lint all files
-    if not lint(py_files + test_files, output):
+    if not lint(py_files + test_files, output, html_output=args.html):
         problem_types.append("lint")
     output.reset_faces()
 

@@ -68,7 +68,7 @@ class Output:
         in HTML output.
         """
         content = self.faceify(content)
-        self.text += f"{content}\n"
+        self.text += f"{content}\n\n"
         self.html += f"<p>{_htmlify(content)}</p>"
 
     def pre_terminal(
@@ -82,7 +82,7 @@ class Output:
             return
         if post_process:
             html_content = post_process(html_content)
-        self.text += f"{plain_content}\n"
+        self.text += f"{plain_content}\n\n"
         self.html += f"<pre style='font-family:monospace;width:max-content;background-color:#111;color:#fff;padding-top:10px;padding-bottom:10px;padding-left:10px;padding-right:10px'>>{html_content}</pre>"
 
     def br(self) -> None:
@@ -92,12 +92,12 @@ class Output:
 
     def hr(self) -> None:
         """Output a horizontal rule."""
-        self.text += f"\n{'-'*80}\n"
+        self.text += f"{'-'*80}\n"
         self.html += "<hr>"
 
     def md(self, content: str) -> None:
         """Output content as markdown."""
-        self.text += f"{content}\n"
+        self.text += f"{content}\n\n"
         if markdown is not None:
             self.html += f"<div>{markdown(content, **MD_KWARGS)}</div>"  # type: ignore
         else:

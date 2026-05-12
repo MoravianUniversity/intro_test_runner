@@ -40,6 +40,17 @@ class InputError(AssertionError):
     """An exception that indicates the input was not read correctly."""
 
 
+@contextlib.contextmanager
+def no_html():
+    global HTML_OUTPUT
+    original = HTML_OUTPUT
+    HTML_OUTPUT = False
+    try:
+        yield
+    finally:
+        HTML_OUTPUT = original
+
+
 def _indent_lines(string: str, num_spaces: int=4) -> str:
     if string == '':
         return string
@@ -148,6 +159,9 @@ def __bold(string: str, charcode: str = "\u2060") -> str:
 
     If HTML_OUTPUT is enabled, this will instead use <b> tags to bold the text.
     """
+    if HTML_OUTPUT:
+        return f'<b>{string}</b>'
+
     output = ''
     for ch in string:
         x = ord(ch)
@@ -170,7 +184,8 @@ def __user_input(string: str, start: int, end: int) -> str:
     <b style="{CSS_USER_INPUT}"> tags to bold the text.
     """
     substr = string[start:end]
-    faux_bold = __bold(substr)
+    with no_html():
+        faux_bold = __bold(substr)
     if HTML_OUTPUT:
         substr = f"<b style='{CSS_USER_INPUT}' data-plain-text='{html.escape(faux_bold)}'>{html.escape(substr)}</b>"
     else:
@@ -200,10 +215,7 @@ def __find_user_input(inpt: str, expected: str, last_end: int) -> int:
     return expected.rfind(inpt, 0, last_end)
 
 def __highlight_user_input_combined(actual: str, expected: str, inpt_ranges: list[tuple[int, int]]) -> tuple[str, str]:
-    global HTML_OUTPUT
-    orig_html_output = HTML_OUTPUT
-    try:
-        HTML_OUTPUT = False  # this always generates plain text
+    with no_html():  # this always generates plain text
         last_end = len(expected)
         def process(string, start, end):
             nonlocal last_end, expected
@@ -214,8 +226,6 @@ def __highlight_user_input_combined(actual: str, expected: str, inpt_ranges: lis
                 last_end = index - 1
             return __user_input(string, start, end)
         return __process_user_input(actual, inpt_ranges, process), expected
-    finally:
-        HTML_OUTPUT = orig_html_output
 
 def __split_trailing_html(line: str) -> tuple[str, str]:
     end_html = ""
@@ -467,21 +477,22 @@ def __gen_output_message_text(
         printed_lines: list[str], expected_lines: list[str],
         printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
     ) -> str:
-    printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges)
-    single_line = '\n' not in expected_orig and '\n' not in printed_orig
-    note = '(bold is user input)' if inpt_ranges else ''
-    msg = f"Expected {note}: {_indent_lines_maybe(expected_orig, single_line)}"
-    msg += f"\nActual {note}: {_indent_lines_maybe(printed_orig, single_line)}"
-    if single_line:
-        diff = __diff_line(printed_lines[0], expected_lines[0])
-    else:
-        diff = '\n'.join(__diff_lines(printed_lines, expected_lines))
-    msg += (
-        "\nDifference ( \u0333 are missing from your output, "
-        " \u0334 are extra in your output):\n"
-    )
-    msg += _indent_lines(diff)
-    return msg
+    with no_html():
+        printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges)
+        single_line = '\n' not in expected_orig and '\n' not in printed_orig
+        note = ' (bold is user input)' if inpt_ranges else ''
+        msg = f"Expected{note}: {_indent_lines_maybe(expected_orig, single_line)}"
+        msg += f"\nActual{note}: {_indent_lines_maybe(printed_orig, single_line)}"
+        if single_line:
+            diff = __diff_line(printed_lines[0], expected_lines[0])
+        else:
+            diff = '\n'.join(__diff_lines(printed_lines, expected_lines))
+        msg += (
+            "\nDifference ( \u0333 are missing from your output, "
+            " \u0334 are extra in your output):\n"
+        )
+        msg += _indent_lines(diff)
+        return msg
 
 def __gen_output_message_html(
         printed_lines: list[str], expected_lines: list[str],

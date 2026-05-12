@@ -38,10 +38,10 @@ def check_text_file(path_str: str, config: dict[str, int|float], output: Output)
             output.p(f":-{{ Your submission seems to have an unmodified '{path_str}'.")
             return False
         elif line_count < min_lines:
-            output.p(f":-| Your submission seems to have an incomplete '{path_str}'.")
+            output.p(f":-| Your submission seems to have an incomplete '{path_str}' ({line_count} < {min_lines} lines).")
             return False
         elif line_count > max_lines:
-            output.p(f":-| Your submission has a ridiculous number of lines in '{path_str}'.")
+            output.p(f":-| Your submission has a ridiculous number of lines in '{path_str}' ({line_count} > {max_lines} lines).")
             return False
     except FileNotFoundError:
         output.p(f":-{{ Your submission does not include '{path_str}' at all.")
@@ -179,8 +179,12 @@ def _check_funcs(
         doc = ast.get_docstring(func)
         doc_len = 0 if doc is None else len(doc)
         if doc_len < exp_len:
-            output.p(f":-| The `{name(file, True)}.{func.name}()` function docstring "
-                     "should be more descriptive...")
+            if doc_len == 0:
+                output.p(f":-| The `{name(file, True)}.{func.name}()` function docstring is "
+                         "missing")
+            else:
+                output.p(f":-| The `{name(file, True)}.{func.name}()` function docstring "
+                         f"should be more descriptive... ({doc_len} < {exp_len} characters)")
             good = False
 
     return good
@@ -297,7 +301,7 @@ def _check_test_funcs(
                     end = "."
                     if isinstance(a, ast.expr) and isinstance(b, ast.expr):
                         end = f" on lines {a.lineno} and {b.lineno}."
-                    output.p(f":-| You have duplicate test questions in your `{n}` test function" + end)
+                    output.p(f":-| You have duplicate test questions in your `{n}` test function{end}")
                     good = False
 
     # TODO: Check that function calls have their return values used in the assert statement
@@ -328,7 +332,8 @@ def check_module(name: str, config: dict, output: Output) -> bool:
         if module_doc_len == 0:
             output.p(f":-| The `{name}` module should have a docstring at the top.")
         else:
-            output.p(f":-| The `{name}` module docstring should be more descriptive...")
+            output.p(f":-| The `{name}` module docstring should be more descriptive... "
+                     f"({module_doc_len} < {min_module_doc_length} characters)")
         good = False
 
     # Check that the module has the expected functions

@@ -13,7 +13,7 @@ from ._output import Output
 from ._utils import name
 
 
-def lint(files: Sequence[str|Path], output: Output) -> bool:
+def lint(files: Sequence[str|Path], output: Output, html_output: bool = False) -> bool:
     """Run ruff on the given files. Returns True if linting passed, False otherwise."""
     ruff_cmd = ["ruff", "check", "-n", "-q", "--color=always"]
     if Path(".ruff.toml").is_file():
@@ -40,7 +40,10 @@ def lint(files: Sequence[str|Path], output: Output) -> bool:
     try:
         result = subprocess.run(ruff_cmd, capture_output=True, text=True, check=False)  # noqa: S603
         if result.returncode != 0:
-            output.p(":-{ Your submission has style issues. Please fix them and try again. The links tell you more about the errors and how to fix them.")
+            msg = ":-{ Your submission has style issues. Please fix them and try again."
+            if html_output:
+                msg += " The links tell you more about the errors and how to fix them."
+            output.p(msg)
             out = result.stdout.strip()
             err = result.stderr.strip()
             output.pre_terminal(out, __ruff_linkify)
@@ -159,7 +162,6 @@ def llm_summary(
     prompt = f"{prompt_header}\n\n{instructor_results}\n"
     try:
         summary = llm_chat(prompt, host=llm_host, model=llm_model)
-        output.br()
         output.hr()
         output.br()
         output.p("💡 The above was run through the AI tutor and the following feedback was generated:\n"
@@ -169,4 +171,3 @@ def llm_summary(
     except requests.RequestException as ex:
         output.p("⁉️ Failed to get LLM summary. Please check your LLM configuration and ensure your LLM is running and accessible.")
         output.p(f"Error details: `{ex}`")
-    
