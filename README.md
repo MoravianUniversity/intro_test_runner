@@ -46,6 +46,8 @@ The runner supports some limited HTML output. The most notable use is when using
 
 To enable this, use the `--html` flag (and the output needs to be viewed somewhere that supports HTML).
 
+The HTML output still includes the plain text output as a `data-plain-text` attribute on the body tag, so that it can be extracted for use in places that only support plain text. A simple way to extract this for all HTML files is with a command like `for file in **/*.html; do pup -f "$file" -p 'body attr{data-plain-text}' > "${file%.html}.txt"; done` (using the [`pup` HTML parsing tool](https://github.com/gromgit/pup))
+
 Using on Gitkeeper
 ------------------
 

@@ -35,10 +35,7 @@ class Output:
     """Class to generate output in different formats."""
     def __init__(self):
         self.text = ""
-        self.html = ("<!DOCTYPE html>\n<html lang='en'><head>"
-                     "<meta charset='utf-8'>"
-                     "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'>"
-                     "</head><body>")
+        self.html = ""
         self.faces = {
             ":-(": "",
             ":-{": "",
@@ -103,12 +100,17 @@ class Output:
         else:
             self.html += f"<div>{_htmlify(content)}</div>"
 
-    def print(self, html_output: bool) -> None:
+    def print(self, html_output: bool, include_text_in_html: bool = True, file=None) -> None:
         """Print the output in the appropriate format."""
         if html_output:
-            print(self.html + "</body></html>")
+            head = ("<!DOCTYPE html>\n<html lang='en'><head>"
+                    "<meta charset='utf-8'>"
+                    "<meta http-equiv='Content-Type' content='text/html; charset=utf-8'>"
+                    "</head>")
+            body = f"<body data-plain-text='{html.escape(self.text)}'>" if include_text_in_html else "<body>"
+            print(f"{head}{body}{self.html}</body></html>", file=file)
         else:
-            print(self.text)
+            print(self.text, file=file)
 
 
 def _htmlify(text: str) -> str:
