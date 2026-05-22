@@ -81,11 +81,12 @@ Optionally, the `_whitespace` keyword argument can be given to determine how whi
 ```python
 def check_output_using_user_input(
   user_input: str, expected_output: str, func: Callable, *args,
-  _whitespace: str = 'relaxed', **kwargs,
+  _whitespace: str = 'relaxed', _input_placeholder: str = '<>',
+  *kwargs,
 ) -> object|None
 ```
 
-Assert that the output (written to stdout) equals `expected_output` when calling `func(*args, **kwargs)` when `user_input` is provided via stdin. This asserts that all of the user input is consumed by the function call. The `expected_output` must include the user input as well. Return the value returned by the function call.
+Assert that the output (written to stdout) equals `expected_output` when calling `func(*args, **kwargs)` when `user_input` is provided via stdin. This asserts that all of the user input is consumed by the function call. The `expected_output` should either include the user input as well or use a placeholder for it (default `'<>'`, it is highlighted in the output, set with `_input_placeholder` keyword argument). Return the value returned by the function call.
 
 The optional `_whitespace` keyword argument is treated as per `check_output_equal()`.
 

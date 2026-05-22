@@ -140,14 +140,14 @@ def __bold(string: str) -> str:
     """
     return f'<b>{string}</b>' if HTML_OUTPUT else unicode_bold(string)
 
-def __user_input(string: str, start: int, end: int) -> str:
+def __user_input(string: str, start: int, end: int, new: str|None = None) -> str:
     """
     Applies bolding with __bold() to a string to indicate that it is user input.
 
     If HTML_OUTPUT is enabled, this will instead use
     <b style="{CSS_USER_INPUT}"> tags to bold the text.
     """
-    substr = string[start:end]
+    substr = new if new is not None else string[start:end]
     with no_html():
         faux_bold = __bold(substr)
     if HTML_OUTPUT:
@@ -178,15 +178,17 @@ def __find_user_input(inpt: str, expected: str, last_end: int) -> int:
     # TODO: this can mis-find if the input is also at the end of a line in the expected output
     return expected.rfind(inpt, 0, last_end)
 
-def __highlight_user_input_combined(actual: str, expected: str, inpt_ranges: list[tuple[int, int]]) -> tuple[str, str]:
+def __highlight_user_input_combined(actual: str, expected: str,
+                                    inpt_ranges: list[tuple[int, int]], input_placeholder: str|None) -> tuple[str, str]:
     with no_html():  # this always generates plain text
         last_end = len(expected)
         def process(string, start, end):
             nonlocal last_end, expected
             inpt = string[start:end]
-            index = __find_user_input(inpt, expected, last_end)
+            contents = input_placeholder if input_placeholder else inpt
+            index = __find_user_input(contents, expected, last_end)
             if index != -1:
-                expected = __user_input(expected, index, index+len(inpt))
+                expected = __user_input(expected, index, index+len(contents), inpt)
                 last_end = index - 1
             return __user_input(string, start, end)
         return __process_user_input(actual, inpt_ranges, process), expected
@@ -201,22 +203,24 @@ def __split_trailing_html(line: str) -> tuple[str, str]:
         line = line[:index]
     return line, end_html
 
-def __highlight_user_input_on_line(lines: list[str], line_num: int, length: int):
+def __highlight_user_input_on_line(lines: list[str], line_num: int, length: int, new: str|None = None):
     if line_num < len(lines):
         line, end_html = __split_trailing_html(lines[line_num])
-        lines[line_num] = f"{line[:-length]}<span style='{CSS_USER_INPUT}'>{line[-length:]}</span>{end_html}"
+        lines[line_num] = f"{line[:-length]}<span style='{CSS_USER_INPUT}'>{new if new is not None else line[-length:]}</span>{end_html}"
 
 def __highlight_user_input_html(actual: str, expected: str,
                                 actual_lines: list[str], expected_lines: list[str],
-                                inpt_ranges: list[tuple[int, int]]):
+                                inpt_ranges: list[tuple[int, int]], input_placeholder: str|None):
     last_end = len(expected)
     def process(string, start, end):
+        # Note: process() operates from the end of the string to the beginning
         nonlocal last_end, expected
-        __highlight_user_input_on_line(actual_lines, actual.count('\n', 0, start), end - start)
+        __highlight_user_input_on_line(actual_lines, actual.count('\n', 0, start), end - start - 1)  # -1 due to missing newline at the end of the input?
         inpt = string[start:end]
-        index = __find_user_input(inpt, expected, last_end)
+        contents = input_placeholder if input_placeholder else inpt
+        index = __find_user_input(contents, expected, last_end)
         if index != -1:
-            __highlight_user_input_on_line(expected_lines, expected.count('\n', 0, index), len(inpt))
+            __highlight_user_input_on_line(expected_lines, expected.count('\n', 0, index), len(contents), inpt.rstrip("\n"))
             last_end = index - 1
         return __user_input(string, start, end)
     __process_user_input(actual, inpt_ranges, process)
@@ -246,7 +250,7 @@ def __check_input(func: Callable, inpt: str, args: Sequence = (), kwargs: dict[s
     # The input read() and readline() functions are wrapped so input also shows in the output
     out = io.StringIO()
     in_ = io.StringIO(inpt)
-    inpt_ranges = [] # ranges in the output that are actually from the input
+    inpt_ranges: list[tuple[int, int]] = [] # ranges in the output that are actually from the input
     def _read(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
         data = io.StringIO.read(in_, *args, **kwargs)
         inpt_ranges.append((len(out.getvalue()), len(data)))
@@ -281,6 +285,8 @@ def __check_input(func: Callable, inpt: str, args: Sequence = (), kwargs: dict[s
 
     # Check that all of the input was used
     output = out.getvalue()
+    if len(inpt_ranges) > 0 and inpt_ranges[-1] == (len(output), 0):
+        inpt_ranges.pop()  # if the last range is empty, remove it since it doesn't correspond to actual input
     if in_.tell() == 0:
         msg += "No input was read at all.\nThe output produced was:\n"
         msg += __highlight_user_input(output, inpt_ranges)
@@ -439,10 +445,11 @@ def __diff_lines_html(a: list[str], b: list[str]) -> tuple[list[str], list[str]]
 
 def __gen_output_message_text(
         printed_lines: list[str], expected_lines: list[str],
-        printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
+        printed_orig: str, expected_orig: str,
+        inpt_ranges: list[tuple[int, int]], input_placeholder: str|None
     ) -> str:
     with no_html():
-        printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges)
+        printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges, input_placeholder)
         single_line = '\n' not in expected_orig and '\n' not in printed_orig
         note = BOLD_NOTE if inpt_ranges else ''
         msg = f"Expected{note}: {_indent_lines_maybe(expected_orig, single_line)}"
@@ -460,13 +467,14 @@ def __gen_output_message_text(
 
 def __gen_output_message_html(
         printed_lines: list[str], expected_lines: list[str],
-        printed_orig: str, expected_orig: str, inpt_ranges: list[tuple[int, int]]
+        printed_orig: str, expected_orig: str,
+        inpt_ranges: list[tuple[int, int]], input_placeholder: str|None
     ) -> str:
-    plain = html.escape(__gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges))
+    plain = html.escape(__gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges, input_placeholder))
     printed_lines = [__html_pretrans(line) for line in printed_lines]
     expected_lines = [__html_pretrans(line) for line in expected_lines]
     prt_diff, exp_diff = __diff_lines_html(printed_lines, expected_lines)
-    __highlight_user_input_html(printed_orig, expected_orig, prt_diff, exp_diff, inpt_ranges)
+    __highlight_user_input_html(printed_orig, expected_orig, prt_diff, exp_diff, inpt_ranges, input_placeholder)
     prt_diff = [__html_posttrans(line) for line in prt_diff]
     exp_diff = [__html_posttrans(line) for line in exp_diff]
     HEADER_STYLE="vertical-align:bottom;border-style:solid;border-color:currentColor;padding-top:0;padding-bottom:0;padding-left:8px;padding-right:8px"
@@ -485,26 +493,35 @@ def __gen_output_message_html(
     )
 
 def __check_output(call_str, printed: str, inpt_ranges: list[tuple[int, int]], expected: str,
-                   _whitespace: str = 'relaxed'):
+                   whitespace: str = 'relaxed', input_placeholder: str|None = '<>'):
+
+    # Update the expected output to replace the input placeholders with the actual inputs
     printed_orig = printed
     expected_orig = expected
-    if _whitespace == 'relaxed':
-        printed_lines = [line.rstrip() for line in printed_orig.rstrip('\n').split('\n')]
+    if input_placeholder and (input_placeholder+"\n") in expected:
+        inputs = [printed[range_start:range_start+length] for range_start, length in inpt_ranges]
+        input_placeholder += "\n"
+        for inpt in inputs:
+            expected = expected.replace(input_placeholder, inpt, 1)
+    else:
+        input_placeholder = None
+
+    if whitespace == 'relaxed':
+        printed_lines = [line.rstrip() for line in printed.rstrip('\n').split('\n')]
         expected_lines = [line.rstrip() for line in expected.rstrip('\n').split('\n')]
     else:
         printed_lines = printed.split('\n')
         expected_lines = expected.split('\n')
 
-    # Check for match - return if match
+    # Check for match - return immediately if match
     if printed_lines == expected_lines:
         return
 
     msg = f"Output mismatch for function call: `{call_str}`\n"
     if HTML_OUTPUT:
-        msg += __gen_output_message_html(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
+        msg += __gen_output_message_html(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges, input_placeholder)
     else:
-        msg += __gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges)
-
+        msg += __gen_output_message_text(printed_lines, expected_lines, printed_orig, expected_orig, inpt_ranges, input_placeholder)
     raise OutputError(msg)
 
 def check_output(
@@ -529,18 +546,21 @@ def check_output(
 
 def check_output_using_user_input(
         user_input: str, expected_output: str, func: Callable, *args: object|None,
-        _whitespace: str = 'relaxed', **kwargs: object|None,
+        _whitespace: str = 'relaxed', _input_placeholder: str = '<>', **kwargs: object|None,
 ) -> object|None:
     """
     Check that the output (written to stdout) equals the expected_output. The callable must be
     passed in (not already called). If it takes arguments, they can be passed in the args and
     kwargs arguments. Additionally, the function grabs user input (from stdin) and this is checked
     for as well. The input is given in the user_input argument and is added to the printed output.
+    The expected output should either include the user input as well or use a placeholder for it
+    (default "<>", it is highlighted in the output, set with _input_placeholder keyword argument).
 
     The optional _whitespace keyword argument is treated as per check_output().
     """
     retval, out, inpt_ranges = __check_input(func, user_input, args, kwargs)
-    __check_output(__call_to_str(func, args, kwargs), out, inpt_ranges, expected_output, _whitespace)
+    __check_output(__call_to_str(func, args, kwargs), out, inpt_ranges, expected_output,
+                   _whitespace, _input_placeholder)
     return retval
 
 def check_input(user_input: str, func: Callable, *args: object|None, _must_output_args: bool = True,
