@@ -125,6 +125,18 @@ with no_input():
     pass # code to run that should never input() or read from stdin
 ```
 
+```python
+@contextlib.contextmanager
+def no_io_during_import()
+```
+
+Context manager that raises an assert error if `print()` is called, `sys.stdout` is written to, `input()` is called, or `sys.stdin` is read from during the import of a module. This can be used to check that a module does not have any side effects during import. Used like:
+
+```python
+with no_io_during_import():
+    import my_module
+```
+
 Enabling AI Summary
 -------------------
 

@@ -565,6 +565,20 @@ def check_input(user_input: str, func: Callable, *args: object|None, _must_outpu
     return retval
 
 @contextlib.contextmanager
+def no_io_during_import():
+    """
+    Context manager that raises an assert error if print() or input() is called (with any file) or if
+    sys.stdout or sys.stdin is written to or read from from any source. Used like:
+
+    with no_io_during_import():
+        import some_module  # code to run that should never print() or input() during import
+    """
+    msg = ("You must have all code in functions and make sure that you have the correct "
+           "if __name__ == '__main__': guard so that no code runs during import")
+    with no_print(msg=msg), no_input(msg=msg):
+        yield None
+
+@contextlib.contextmanager
 def no_print(
     print_func_okay: bool = False,
     msg: str = "You are not allowed to use `print()`, instead use return values",
