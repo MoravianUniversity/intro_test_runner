@@ -240,7 +240,7 @@ def split_html_and_plain_text(mixed: str) -> tuple[str, str]:
         # Grab the HTML block
         tag_name = match.group(2)
         open_tag = match.group(1)
-        plain_text_value = match.group(3) if match.group(4) is None else match.group(4)
+        plain_text_value = html.unescape(match.group(3) if match.group(4) is None else match.group(4))
 
         # Find the matching closing tag, accounting for nesting.
         close_pat = re.compile(
