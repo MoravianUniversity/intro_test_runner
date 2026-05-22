@@ -135,10 +135,17 @@ def llm_summary(
         "text": "assignment written answers"
     }
     types = [type_map.get(pt, pt) for pt in problem_types]
-    types_str = ", ".join(types[:-1]) + (", and " if len(types) > 1 else "") + types[-1]
+    if len(types) == 1:
+        types_str = types[0]
+    elif len(types) == 2:
+        types_str = f"{types[0]} and {types[1]}"
+    else:
+        types_str = ", ".join(types[:-1]) + (", and " + types[-1])
 
     supession_note = "You may not suggest that they suppress linting messages or change linting settings." if "lint" in problem_types else ""
     instructor_note = "The instructor tests may not be changed and are correct. " if "instructor test" in problem_types else ""
+    if instructor_note and "Output mismatch" in instructor_results:
+        instructor_note += "Expected outputs are the correct outputs. The actual outputs are produced by the student's code. The outputs can include user inputs as well (typically after a question mark or colon). "
     either_note = "Instead, guide the student on how they should fix the underlying problems in their code. " if "lint" in problem_types or "instructor test" in problem_types else ""
 
     addl_prompt = config.get("addl-prompt", "")
