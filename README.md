@@ -78,6 +78,8 @@ Assert that the output (written to stdout) equals `expected_output` when calling
 
 Optionally, the `_whitespace` keyword argument can be given to determine how whitespace is compared. It can be either `'strict'` (whitespace must be exactly equal) or `'relaxed'` (the default, trailing whitespace on each line is ignored).
 
+-----------------------------------------------------------------------------
+
 ```python
 def check_output_using_user_input(
   user_input: str, expected_output: str, func: Callable, *args,
@@ -90,12 +92,16 @@ Assert that the output (written to stdout) equals `expected_output` when calling
 
 The optional `_whitespace` keyword argument is treated as per `check_output_equal()`.
 
+-----------------------------------------------------------------------------
+
 ```python
 def check_input(user_input: str, func: Callable, *args, _must_output_args: bool = True,
                 **kwargs) -> object|None
 ```
 
 Get the return value when calling `func(*args, **kwargs)` when `user_input` is provided via stdin. This asserts that all of the user input is consumed by the function call. By default you also makes sure that provided arguments show up in the output, but setting `_must_output_args=False` will not check that.
+
+-----------------------------------------------------------------------------
 
 ```python
 @contextlib.contextmanager
@@ -114,6 +120,8 @@ with no_print():
     pass # code to run that should never print() or write to stdout
 ```
 
+-----------------------------------------------------------------------------
+
 ```python
 @contextlib.contextmanager
 def no_input(msg: str = "You are not allowed to use input(), instead use parameters")
@@ -125,6 +133,8 @@ Context manager that raises an assert error if `input()` is called or if `sys.st
 with no_input():
     pass # code to run that should never input() or read from stdin
 ```
+
+-----------------------------------------------------------------------------
 
 ```python
 @contextlib.contextmanager
@@ -180,5 +190,4 @@ TODO
 
 * Improve HTML rendering on different devices (dark vs light mode, mobile vs desktop, etc.)
 * Use pytest-html and ruff + ciqar to generate more detailed HTML reports and include those in the output to students
-* Print dual output (plain and HTML) simultaneously (and add support for this in Gitkeeper)
 * Add support for function plan feedback
