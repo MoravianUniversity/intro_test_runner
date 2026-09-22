@@ -11,6 +11,7 @@ from ._output import Output
 from ._utils import tb_info
 from ._external_progs import lint, test, llm_summary
 from ._internal_checks import check_module, check_text_file, check_all, copy_files, check_tests
+from ._function_planner import check_all_function_planners, resolve_student_email
 
 
 class Timeout(RuntimeError):  # noqa: N818
@@ -50,6 +51,9 @@ def main():
                         help="Path to the source code directory (default: current directory)")
     parser.add_argument("--html", action="store_true",
                         help="Generate HTML output")
+    parser.add_argument("--student-email", type=str, default=None,
+                        help="Student email for function-planner API checks "
+                             "(falls back to last git commit author in --src)")
     args = parser.parse_args()
 
     # Read the test configuration
@@ -81,6 +85,11 @@ def main():
     # Check modules
     if not check_all(modules, output, check_module):
         problem_types.append("module")
+
+    # Function planner checks (plan problems and/or plan vs Python compare)
+    student_email = resolve_student_email(args.student_email, args.src)
+    if not check_all_function_planners(modules, config.get("function-planner"), student_email, output):
+        problem_types.append("plan")
 
     # Run tests
     try:

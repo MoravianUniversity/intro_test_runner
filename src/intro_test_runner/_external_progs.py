@@ -110,7 +110,7 @@ def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "
 
 def llm_summary(
         instructor_results: str, config: dict[str, str]|None, output: Output,
-        problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text"],
+        problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text", "plan"],
     ):
     """
     Get a summary of the instructor test results from the LLM.
@@ -119,8 +119,8 @@ def llm_summary(
     The config can also include "model" and "prompt-header" if necessary.
 
     The problem_types parameter is a list of the types of problems that were found (e.g. "lint",
-    "test", "instructor test", "timeout", "module", "text") which are used to customize the prompt
-    for the LLM.
+    "test", "instructor test", "timeout", "module", "text", "plan") which are used to customize
+    the prompt for the LLM.
     """
     if config is None or "host" not in config:
         return
@@ -132,7 +132,8 @@ def llm_summary(
         "instructor test": "instructor tests",
         "timeout": "tests that timed out",
         "module": "assignment requirements",
-        "text": "assignment written answers"
+        "text": "assignment written answers",
+        "plan": "function plan",
     }
     types = [type_map.get(pt, pt) for pt in problem_types]
     if len(types) == 1:

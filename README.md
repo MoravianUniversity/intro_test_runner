@@ -24,6 +24,11 @@ This program utilizes several files in the testing directory to determine what t
       "check-unused-funcs": true, // default is true, whether to check for any functions that are defined but not called anywhere in the code
       "check-useless-funcs": true, // default is true, whether to check for any functions that simply call another function with the same parameters or return a constant value
       "forbid": ["f-string", "str.format", "function:print"], // optional list of forbidden language features (supported: "f-string", "str.format", "percent-format", "lambda", "comprehension", "ternary", "if-exp", "class", "walrus", "match", "try", "with", "global", "nonlocal", "eval", "exec", "while", "for", "break", "continue", "map", "filter", "reduce", "nested-function", "async", "yield"; also "function:<name>" to forbid any call by that name, e.g. "function:print")
+      "function-planner": { // optional; checks the online function plan for this module; see Function Planner section below for more details
+        "plan": "project-1", // base plan id (slug) in the function-planner tool
+        "check": true, // default true; query the planner for plan warnings/errors (both fail the check)
+        "compare": true // default true; compare the plan to this module's Python (and its *_test.py when check-tests includes that file)
+      }
     }
   },
   "text-files": {
@@ -32,6 +37,10 @@ This program utilizes several files in the testing directory to determine what t
       "min-lines": 0, // default is 0, minimum number of lines in the file
       "max-lines": 100, // default is inf, maximum number of lines in the file
     }
+  },
+  "function-planner": { // optional; required when any module uses function-planner checks
+    "api-prefix": "https://example.com/api", // base URL for the function-planner API (no trailing slash needed)
+    "api-token": "<bearer jwt>" // course API bearer token from the function-planner roster
   }
 }
 ```
@@ -39,6 +48,16 @@ This program utilizes several files in the testing directory to determine what t
 The program also looks for a `.ruff.toml` or `ruff.toml` file to determine how to run ruff.
 
 The student test files must be named with the format `<module_name>_test.py` (e.g. `project_1_test.py` for `project_1.py`) and must be in the same directory as the module files. If a `_instructor_test.py` file is present in the testing directory, it will also be run as part of the tests.
+
+Function Planner
+----------------
+
+[Function Planner](https://github.com/MoravianUniversity/function-planner) is an online tool where students design a plan for their program (functions, parameters, call structure, and related documentation) before or alongside writing Python. When `function-planner` is configured in `tests.json`, this runner calls that tool's API to:
+
+* report warnings and errors in the student's plan (`check`), and
+* compare the plan to the submitted Python module (`compare`), including the student `*_test.py` when that file is part of the submission via `check-tests`.
+
+The top-level `api-prefix` / `api-token` come from the Function Planner course settings (roster API token). Each module's `plan` value is the base plan id (slug) in that course. Student identity is supplied with `--student-email` (or the last git commit author in `--src`).
 
 HTML Output
 -----------
@@ -59,9 +78,10 @@ Using on Gitkeeper
 * Use the following action.sh file (along with including the `tests.json`, `.ruff.toml`, and `_instructor_test.py` files in the testing directory):
   ```bash
   #!/bin/bash
-  python3 -m intro_test_runner -s "$1" --html
+  python3 -m intro_test_runner -s "$1" --student-email "$3" --html
   exit 0
   ```
+  (`$3` is the student email from Gitkeeper; it is used when `function-planner` checks are configured. If omitted, the runner falls back to the author email of the last git commit in the submission directory.)
 
 Publicly Exposed API
 --------------------
@@ -191,4 +211,3 @@ TODO
 
 * Improve HTML rendering on different devices (dark vs light mode, mobile vs desktop, etc.)
 * Use pytest-html and ruff + ciqar to generate more detailed HTML reports and include those in the output to students
-* Add support for function plan feedback
