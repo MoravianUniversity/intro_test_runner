@@ -252,6 +252,116 @@ def _check_for_useless_funcs(
     return good
 
 
+def _is_percent_format(node: ast.AST, _parents: dict[ast.AST, ast.AST]) -> bool:
+    return (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.Mod)
+        and (
+            isinstance(node.left, ast.JoinedStr)
+            or (isinstance(node.left, ast.Constant) and isinstance(node.left.value, str))
+        )
+    )
+
+
+def _is_call_to(node: ast.AST, func_name: str) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == func_name
+    )
+
+
+def _is_nested_function(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        return False
+    parent = parents.get(node)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return True
+        if isinstance(parent, (ast.ClassDef, ast.Module)):
+            return False
+        parent = parents.get(parent)
+    return False
+
+
+# Detectors receive (node, parent_map). Add new forbidden features here.
+_FORBIDDEN_FEATURES: dict[str, Callable[[ast.AST, dict[ast.AST, ast.AST]], bool]] = {
+    "f-string": lambda n, _: isinstance(n, ast.JoinedStr),
+    "str.format": lambda n, _: (
+        isinstance(n, ast.Call)
+        and isinstance(n.func, ast.Attribute)
+        and n.func.attr == "format"
+    ),
+    "percent-format": _is_percent_format,
+    "lambda": lambda n, _: isinstance(n, ast.Lambda),
+    "comprehension": lambda n, _: isinstance(
+        n, (ast.ListComp, ast.DictComp, ast.SetComp, ast.GeneratorExp)
+    ),
+    "ternary": lambda n, _: isinstance(n, ast.IfExp),
+    "if-exp": lambda n, _: isinstance(n, ast.IfExp),
+    "class": lambda n, _: isinstance(n, ast.ClassDef),
+    "walrus": lambda n, _: isinstance(n, ast.NamedExpr),
+    "match": lambda n, _: isinstance(n, ast.Match),
+    "try": lambda n, _: isinstance(n, ast.Try),
+    "with": lambda n, _: isinstance(n, (ast.With, ast.AsyncWith)),
+    "global": lambda n, _: isinstance(n, ast.Global),
+    "nonlocal": lambda n, _: isinstance(n, ast.Nonlocal),
+    "eval": lambda n, _: _is_call_to(n, "eval"),
+    "exec": lambda n, _: _is_call_to(n, "exec"),
+    "while": lambda n, _: isinstance(n, ast.While),
+    "for": lambda n, _: isinstance(n, (ast.For, ast.AsyncFor)),
+    "break": lambda n, _: isinstance(n, ast.Break),
+    "continue": lambda n, _: isinstance(n, ast.Continue),
+    "map": lambda n, _: _is_call_to(n, "map"),
+    "filter": lambda n, _: _is_call_to(n, "filter"),
+    "reduce": lambda n, _: _is_call_to(n, "reduce"),
+    "nested-function": _is_nested_function,
+    "async": lambda n, _: isinstance(
+        n, (ast.AsyncFunctionDef, ast.Await, ast.AsyncFor, ast.AsyncWith)
+    ),
+    "yield": lambda n, _: isinstance(n, (ast.Yield, ast.YieldFrom)),
+}
+
+
+def _forbidden_feature_detector(
+        feature: str,
+) -> Callable[[ast.AST, dict[ast.AST, ast.AST]], bool] | None:
+    if feature.startswith("function:"):
+        func_name = feature.removeprefix("function:")
+        if not func_name:
+            return None
+        return lambda n, _, name=func_name: _is_call_to(n, name)
+    return _FORBIDDEN_FEATURES.get(feature)
+
+
+def _check_forbidden_features(
+        file: Path,
+        code: ast.Module,
+        forbid: Sequence[str],
+        output: Output,
+) -> bool:
+    parents = {
+        child: parent
+        for parent in ast.walk(code)
+        for child in ast.iter_child_nodes(parent)
+    }
+    good = True
+    for feature in forbid:
+        detector = _forbidden_feature_detector(feature)
+        if detector is None:
+            output.p(f":-| Unknown forbidden feature '{feature}'.")
+            good = False
+            continue
+        for node in ast.walk(code):
+            if detector(node, parents):
+                lineno = getattr(node, "lineno", None)
+                loc = f" at line {lineno}" if lineno is not None else ""
+                output.p(f":-| Disallowed language feature '{feature}' found in `{name(file, True)}`{loc}.")
+                good = False
+                break
+    return good
+
+
 def _check_test_funcs(
         test_file: Path, req_funcs: dict[str, int], output: Output,
         addl_tests_allowed: bool = False,
@@ -318,6 +428,7 @@ def check_module(name: str, config: dict, output: Output) -> bool:
     min_func_doc_length = config.get("min-func-doc-length", 20)
     check_unused_funcs = config.get("check-unused-funcs", True)
     check_useless_funcs = config.get("check-useless-funcs", True)
+    forbid = config.get("forbid", [])
 
     path = Path(f"{name}.py").resolve()
     test_path = Path(f"{name}_test.py").resolve()
@@ -346,6 +457,10 @@ def check_module(name: str, config: dict, output: Output) -> bool:
     if check_unused_funcs and not _check_for_unused_funcs(path, code, output):
         good = False
     if check_useless_funcs and not _check_for_useless_funcs(path, funcs, output):
+        good = False
+
+    # Check for any forbidden language features
+    if forbid and not _check_forbidden_features(path, code, forbid, output):
         good = False
 
     # Check that there are the right number of tests if required

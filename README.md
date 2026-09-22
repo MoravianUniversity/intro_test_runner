@@ -23,6 +23,7 @@ This program utilizes several files in the testing directory to determine what t
       "min-func-doc-length": 20, // default is 20, minimum length of each function docstring; can also be a mapping of function name to minimum docstring length, with a special "_default" key for any functions not explicitly listed
       "check-unused-funcs": true, // default is true, whether to check for any functions that are defined but not called anywhere in the code
       "check-useless-funcs": true, // default is true, whether to check for any functions that simply call another function with the same parameters or return a constant value
+      "forbid": ["f-string", "str.format", "function:print"], // optional list of forbidden language features (supported: "f-string", "str.format", "percent-format", "lambda", "comprehension", "ternary", "if-exp", "class", "walrus", "match", "try", "with", "global", "nonlocal", "eval", "exec", "while", "for", "break", "continue", "map", "filter", "reduce", "nested-function", "async", "yield"; also "function:<name>" to forbid any call by that name, e.g. "function:print")
     }
   },
   "text-files": {
