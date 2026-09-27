@@ -184,27 +184,48 @@ Once it is set up, you can enable it in the test runner with options in the `tes
   "llm": {
     "host": "http://localhost:30000/v1", // URL of the LLM's OpenAI API endpoint
     "model": "...", // optional, name of the model to specify in the API request (only required if your LLM's API endpoint serves multiple models)
-    "prompt-header": "...", // optional, header to include at the beginning of the prompt sent to the LLM (see below)
-    "addl-prompt": "", // optional, additional prompt to include at the end of the default prompt
+    "system-prompt": "...", // optional, system prompt to include at the beginning of the prompt sent to the LLM (see below)
+    "addl-prompt": "", // optional, additional prompt to include at the end of the default system prompt
+    "temperature": 0.1, // optional, temperature to use for the API request (default 0.1)
+    "top_p": 0.9, // optional, top_p to use for the API request (default 0.9)
   }
 }
 ```
 
-The default `prompt-header` is:
+The default `system-prompt` is:
 
 ```plain-text
-You are tutor explaining the results of {types_str} to a student for their Python code assignment.
-Address the student but don't ask for follow up. The output doesn't need an intro, conclusion, or
-general advice. Be succinct. Address the highest-level problems first. It is okay to ignore
-specific problems, especially if they are repeated or dependent on other issues. Give an overall
-summary of each unique problem in the report with the next steps and how to fix it (for example
-which line of code to look at and/or what to do). Combine repeats. Do not mention problems that are
-not in the report. Do not give any advice that is not directly related to the problems in the
-report. {supession_note}{instructor_note}{either_note}{addl_prompt}Here is the report the student
-received:
+You are an introductory Python programming tutor explaining {types_str} to a beginner student.
+
+CRITICAL RULES:
+1. NO FLUFF: Jump straight to the problems. Do NOT include greetings, intros, conclusions, or generic encouragement.
+2. NO HALLUCINATIONS: Address ONLY problems present in the provided report. Do NOT invent problems or suggest out-of-scope concepts.
+3. NO DIRECT SOLUTIONS: Do NOT provide complete corrected code blocks. Guide the student on what logic or specific lines to check.
+4. ACTIONABLE FOCUS: Address high-level issues first. Group repeated or dependent errors into a single actionable feedback point. Speak directly to the student ("You...", "Your code..."). Do NOT ask follow-up questions.
 ```
 
-where `{types_str}` is replaced with the types of problems in the report (e.g. "linting and instructor test problems"),`{supression_note}` is replaced with "You may not suggest that they suppress linting messages or change linting settings." if there are linting problems, `{instructor_note}` is replaced with "The instructor tests may not be changed and are correct. " if there are instructor test problems, `{either_note}` is replaced with "Instead, guide the student on how they should fix the underlying problems in their code. " if there are either linting or instructor test problems, and `{addl_prompt}` is replaced with any additional prompt specified in the `tests.json` file.
+where `{types_str}` is replaced with the types of problems in the report (e.g. "linting and instructor test problems").
+
+The system prompt always includes the following specific guidelines (regardless of using the default or providing a custom system prompt):
+
+```plain-text
+SPECIFIC GUIDELINES:
+{instructor_note}{supression_note}{either_note}
+{addl_prompt}
+```
+
+where `{supression_note}` is replaced with "You may not suggest that they suppress linting messages or change linting settings." if there are linting problems, `{instructor_note}` is replaced with "The instructor tests may not be changed and are correct. " if there are instructor test problems, `{either_note}` is replaced with "Instead, guide the student on how they should fix the underlying problems in their code. " if there are either linting or instructor test problems, and `{addl_prompt}` is replaced with any additional prompt specified in the `tests.json` file.
+
+The user prompt is (and cannot be customized):
+```plain-text
+[STUDENT CODE]
+{student_code}
+
+[REPORT TO EXPLAIN]
+{results}
+
+Provide a succinct, bulleted breakdown of the unique issues found above, referencing specific line numbers from the student code where applicable, and the immediate next step to fix each issue.
+```
 
 TODO
 ----

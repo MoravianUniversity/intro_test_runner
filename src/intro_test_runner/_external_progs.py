@@ -93,13 +93,23 @@ def test(files: Sequence[str|Path], output: Output, instructor: bool = False, ht
     return True
 
 
-def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "") -> str:
+def llm_chat(
+    system_prompt: str,
+    user_prompt: str,
+    host: str = "http://localhost:8080/v1",
+    model: str = "",
+    temperature: float = 0.1,
+    top_p: float = 0.9,
+) -> str:
     """Send a chat request to the LLM and return the response content."""
     payload = {
         "model": model,
         "messages": [
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": system_prompt.strip()},
+            {"role": "user", "content": user_prompt.strip()}
         ],
+        "temperature": temperature,
+        "top_p": top_p,
         "stream": False,
         "reasoning_format": "deepseek"
     }
@@ -108,28 +118,54 @@ def llm_chat(prompt: str, host: str = "http://localhost:8080/v1", model: str = "
     return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
 
 
+def _remove_differences(text: str) -> str:
+    """
+    Removes the DIFFERENCE_NOTE and any blank or indented lines (4+ spaces) immediately following it from the given text.
+    """
+    dif_note_idx = text.find(DIFFERENCE_NOTE)
+    while dif_note_idx != -1:
+        before = text[:dif_note_idx]
+        after = text[dif_note_idx + len(DIFFERENCE_NOTE):]
+        # Remove blank or indented (4+ spaces) lines at the start of 'after'
+        after_lines = after.splitlines()
+        kept_after = []
+        skipping = True
+        for line in after_lines:
+            if skipping and (line.strip() == "" or re.match(r"^( {4,}|\t+)", line)):
+                continue
+            skipping = False
+            kept_after.append(line)
+        text = before + ("\n" + "\n".join(kept_after) if kept_after else "")
+        dif_note_idx = text.find(DIFFERENCE_NOTE)
+    return text
+
+
 def llm_summary(
-        instructor_results: str, config: dict[str, str]|None, output: Output,
+        results: str, config: dict[str, str]|None, output: Output,
+        files: Sequence[str|Path]|None = None,
         problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text", "plan"],
     ):
     """
-    Get a summary of the instructor test results from the LLM.
+    Get a summary of the test results from the LLM.
     
-    If "host" is not in config, returns None. Otherwise, returns the LLM summary as a string.
-    The config can also include "model" and "prompt-header" if necessary.
+    If "host" is not in config or the config is None, returns None. Otherwise, returns the LLM
+    summary as a string. The config can also include the following:
+        model (default empty string)
+        temperature (default 0.1)
+        top_p (default 0.9)
+        addl-prompt (default empty string)
+        system-prompt (default value lists off critical rules and specific guidelines)
 
     The problem_types parameter is a list of the types of problems that were found (e.g. "lint",
     "test", "instructor test", "timeout", "module", "text", "plan") which are used to customize
-    the prompt for the LLM.
+    the system prompt for the LLM.
     """
     if config is None or "host" not in config:
         return
-    llm_host = config['host']
-    llm_model = config.get('model', "")
     type_map = {
-        "lint": "a linter",
-        "test": "student tests",
-        "instructor test": "instructor tests",
+        "lint": "linter results",
+        "test": "student test results",
+        "instructor test": "instructor test results",
         "timeout": "tests that timed out",
         "module": "assignment requirements",
         "text": "assignment written answers",
@@ -143,39 +179,56 @@ def llm_summary(
     else:
         types_str = ", ".join(types[:-1]) + (", and " + types[-1])
 
-    supession_note = "You may not suggest that they suppress linting messages or change linting settings." if "lint" in problem_types else ""
-    instructor_note = "The instructor tests may not be changed and are correct. " if "instructor test" in problem_types else ""
-    if instructor_note and "Output mismatch" in instructor_results:
-        instructor_note += "Expected outputs are the correct outputs. The actual outputs are produced by the student's code. The outputs can include user inputs as well (typically after a question mark or colon). "
-    either_note = "Instead, guide the student on how they should fix the underlying problems in their code. " if "lint" in problem_types or "instructor test" in problem_types else ""
-
+    # Create the system prompt for the LLM
     addl_prompt = config.get("addl-prompt", "")
-    prompt_header = config.get(
-        'prompt-header',
-        "You are tutor explaining the results of {types_str} to a student for their Python code "
-        "assignment. Address the student but don't ask for follow up. The output doesn't "
-        "need an intro, conclusion, or general advice. Be succinct. Address the highest-level "
-        "problems first. It is okay to ignore specific problems, especially if they are "
-        "repeated or dependent on other issues. Give an overall summary of each unique problem in "
-        "the report with the next steps and how to fix it (for example which line of code to look "
-        "at and/or what to do). Combine repeats. Do not mention problems that are not in the "
-        "report. Do not give any advice that is not directly related to the problems in the report. "
-        "{supession_note}{instructor_note}{either_note}{addl_prompt}Here is the report the student received:"
-    ).format(
-        types_str=types_str,
-        supession_note=supession_note,
-        instructor_note=instructor_note,
-        either_note=either_note,
-        addl_prompt=addl_prompt
-    )
+    has_lint = "lint" in problem_types
+    has_instructor_test = "instructor test" in problem_types
+    has_specific_guidelines = has_lint or has_instructor_test or addl_prompt
+
+    supression_note = "You may not suggest that they suppress linting messages or change linting settings. " if has_lint else ""
+    instructor_note = "The instructor tests may not be changed and are correct. " if has_instructor_test else ""
+    if instructor_note and "Output mismatch" in results:
+        instructor_note += "Expected outputs are the correct outputs. The actual outputs are produced by the student's code. The outputs can include user inputs as well (typically after a question mark or colon). "
+    either_note = "Instead, guide the student on how they should fix the underlying problems in their code. " if has_lint or has_instructor_test else ""
+
+    system_prompt = config.get(
+        'system-prompt',
+        "You are an introductory Python programming tutor explaining {types_str} to a beginner student.\n\n"
+        "CRITICAL RULES:\n"
+        "1. NO FLUFF: Jump straight to the problems. Do NOT include greetings, intros, conclusions, or generic encouragement.\n"
+        "2. NO HALLUCINATIONS: Address ONLY problems present in the provided report. Do NOT invent problems or suggest out-of-scope concepts.\n"
+        "3. NO DIRECT SOLUTIONS: Do NOT provide complete corrected code blocks. Guide the student on what logic or specific lines to check.\n"
+        "4. ACTIONABLE FOCUS: Address high-level issues first. Group repeated or dependent errors into a single actionable feedback point. Speak directly to the student (\"You...\", \"Your code...\"). Do NOT ask follow-up questions."
+    ).format(types_str=types_str)
+    if has_specific_guidelines:
+        system_prompt += "\n\nSPECIFIC GUIDELINES:\n"
+        system_prompt += f"{instructor_note}{supression_note}{either_note}\n"
+        system_prompt += f"{addl_prompt}"
 
     # Clean up the text for things that may confuse the LLM
-    instructor_results = unicode_unbold(unicode_unitalics(instructor_results.strip().replace(BOLD_NOTE, "")))
-    instructor_results = instructor_results.split(DIFFERENCE_NOTE)[0]  # remove the difference chunk
+    results = unicode_unbold(unicode_unitalics(results.strip().replace(BOLD_NOTE, "")))
+    results = _remove_differences(results)
 
-    prompt = f"{prompt_header}\n\n{instructor_results}\n"
+    # Create the user prompt for the LLM
+    user_prompt = f"""[REPORT TO EXPLAIN]
+{results}
+
+Provide a succinct, bulleted breakdown of the unique issues found above, referencing specific line numbers from the student code where applicable, and the immediate next step to fix each issue."""
+    if files:
+        # TODO: only include files that are actually in the report
+        paths = [Path(f) for f in files]
+        student_code = "\n\n".join(f"[FILE: {p.name}]\n{p.read_text(encoding='utf-8').strip()}" for p in paths)
+        user_prompt = f"[STUDENT CODE]\n{student_code}\n\n{user_prompt}"
+
     try:
-        summary = llm_chat(prompt, host=llm_host, model=llm_model)
+        summary = llm_chat(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            host=config['host'],
+            model=config.get('model', ""),
+            temperature=config.get('temperature', 0.1),
+            top_p=config.get('top_p', 0.9),
+        )
         output.hr()
         output.br()
         output.p("💡 The above was run through the AI tutor and the following feedback was generated:\n"

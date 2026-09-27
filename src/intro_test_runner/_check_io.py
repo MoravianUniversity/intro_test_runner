@@ -458,11 +458,7 @@ def __gen_output_message_text(
             diff = __diff_line(printed_lines[0], expected_lines[0])
         else:
             diff = '\n'.join(__diff_lines(printed_lines, expected_lines))
-        msg += (
-            "\nDifference ( \u0333 are missing from your output, "
-            " \u0334 are extra in your output):\n"
-        )
-        msg += _indent_lines(diff)
+        msg += DIFFERENCE_NOTE + _indent_lines(diff)
         return msg
 
 def __gen_output_message_html(

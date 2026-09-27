@@ -119,7 +119,7 @@ def main():
     else:
         output.p(":-( Some problems were found in your submission. "
                  "Please fix them and submit again.")
-        llm_summary(output.text, config.get("llm"), output, problem_types)
+        llm_summary(output.text, config.get("llm"), output, py_files + test_files, problem_types)
     output.print(args.html)
 
 main()
