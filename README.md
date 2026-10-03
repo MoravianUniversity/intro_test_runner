@@ -49,6 +49,38 @@ The program also looks for a `.ruff.toml` or `ruff.toml` file to determine how t
 
 The student test files must be named with the format `<module_name>_test.py` (e.g. `project_1_test.py` for `project_1.py`) and must be in the same directory as the module files. If a `_instructor_test.py` file is present in the testing directory, it will also be run as part of the tests.
 
+Global Defaults
+---------------
+
+Shared settings such as `llm` and `function-planner` (including API tokens) can live in a global defaults file that is deep-merged under the assignment `tests.json`. Assignment values win on conflicts; nested objects are merged key-by-key.
+
+The first existing file in this list is used:
+
+1. `--global-config PATH`
+2. `ITR_CONFIG` environment variable (path to a JSON file)
+3. `$XDG_CONFIG_HOME/intro_test_runner/config.json`, or `~/.config/intro_test_runner/config.json` if `XDG_CONFIG_HOME` is unset
+4. `/etc/intro_test_runner/config.json`
+
+If none of those exist, only the assignment config is used.
+
+Example global config:
+
+```json
+{
+  "llm": {
+    "host": "http://llm.example:30000/v1",
+    "model": "...",
+    "api-key": "..."
+  },
+  "function-planner": {
+    "api-prefix": "https://example.com/api",
+    "api-token": "..."
+  }
+}
+```
+
+On Gitkeeper with firejail (default), the user config directory under `$HOME` is typically unavailable; use `/etc/intro_test_runner/config.json`, `ITR_CONFIG`, or `--global-config` instead.
+
 Function Planner
 ----------------
 
@@ -57,7 +89,7 @@ Function Planner
 * report warnings and errors in the student's plan (`check`), and
 * compare the plan to the submitted Python module (`compare`), including the student `*_test.py` when that file is part of the submission via `check-tests`.
 
-The top-level `api-prefix` / `api-token` come from the Function Planner course settings (roster API token). Each module's `plan` value is the base plan id (slug) in that course. Student identity is supplied with `--student-email` (or the last git commit author in `--src`).
+The top-level `api-prefix` / `api-token` come from the Function Planner course settings (roster API token), and may be supplied via the assignment `tests.json` or the [global defaults](#global-defaults) file. Each module's `plan` value is the base plan id (slug) in that course. Student identity is supplied with `--student-email` (or the last git commit author in `--src`).
 
 HTML Output
 -----------
@@ -176,7 +208,7 @@ New students often struggle to understand the lint and test messages. To help wi
 
 To enable this feature, you need to set up an LLM that supports the OpenAI API. Three locally hosted LLM options are [llama.cpp](https://llama-cpp.com/), [vllm](https://vllm.ai/), and [ollama](https://ollama.com/). We have been using the the [Llama-3.1-8B-Instruct model](https://huggingface.co/unsloth/Llama-3.1-8B-Instruct-GGUF) which provides decent results and is quite fast (results in <5 seconds in our setup).
 
-Once it is set up, you can enable it in the test runner with options in the `tests.json` file:
+Once it is set up, you can enable it in the test runner with options in the `tests.json` file (or in the [global defaults](#global-defaults) file):
 
 ```json
 {
@@ -184,6 +216,8 @@ Once it is set up, you can enable it in the test runner with options in the `tes
   "llm": {
     "host": "http://localhost:30000/v1", // URL of the LLM's OpenAI API endpoint
     "model": "...", // optional, name of the model to specify in the API request (only required if your LLM's API endpoint serves multiple models)
+    "api-key": "...", // optional; when set, sent as Authorization: Bearer <key>; when omitted, no auth header is sent
+    "enabled": true, // optional, default true; set false to disable LLM summary even if host is configured globally
     "system-prompt": "...", // optional, system prompt to include at the beginning of the prompt sent to the LLM (see below)
     "addl-prompt": "", // optional, additional prompt to include at the end of the default system prompt
     "temperature": 0.1, // optional, temperature to use for the API request (default 0.1)
@@ -232,3 +266,14 @@ TODO
 
 * Improve HTML rendering on different devices (dark vs light mode, mobile vs desktop, etc.)
 * Use pytest-html and ruff + ciqar to generate more detailed HTML reports and include those in the output to students
+
+Future: Secrets Handling
+------------------------
+
+API tokens may currently be placed inline in the global or assignment JSON. On Gitkeeper this is an obscurity tradeoff: student code runs in the same firejail environment and can read world-readable paths such as `/etc/intro_test_runner/` if it looks for them. Motivated students are uncommon for this use case today; treat tokens accordingly.
+
+Possible improvements (not implemented):
+
+* Separate secrets file with `secret:name` references from config, plus optional CLI-only consume-after-read for writable secrets files.
+* Nested firejail around pytest that blacklists the config/secrets path after the parent process has loaded secrets into memory (needs validation inside Gitkeeper's existing firejail).
+* Native secrets support in Gitkeeper itself, if/when that lands.

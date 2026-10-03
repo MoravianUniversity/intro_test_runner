@@ -100,6 +100,7 @@ def llm_chat(
     model: str = "",
     temperature: float = 0.1,
     top_p: float = 0.9,
+    api_key: str | None = None,
 ) -> str:
     """Send a chat request to the LLM and return the response content."""
     payload = {
@@ -113,7 +114,10 @@ def llm_chat(
         "stream": False,
         "reasoning_format": "deepseek"
     }
-    response = requests.post(f"{host}/chat/completions", json=payload)
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    response = requests.post(f"{host}/chat/completions", json=payload, headers=headers or None)
     response.raise_for_status()
     return response.json().get("choices", [{}])[0].get("message", {}).get("content", "")
 
@@ -141,18 +145,20 @@ def _remove_differences(text: str) -> str:
 
 
 def llm_summary(
-        results: str, config: dict[str, str]|None, output: Output,
+        results: str, config: dict|None, output: Output,
         files: Sequence[str|Path]|None = None,
         problem_types: list[str] = ["lint", "test", "instructor test", "timeout", "module", "text", "plan"],
     ):
     """
     Get a summary of the test results from the LLM.
     
-    If "host" is not in config or the config is None, returns None. Otherwise, returns the LLM
-    summary as a string. The config can also include the following:
+    If "host" is not in config, the config is None, or enabled is false, returns None.
+    Otherwise, returns the LLM summary as a string. The config can also include:
         model (default empty string)
         temperature (default 0.1)
         top_p (default 0.9)
+        api-key (optional; Bearer auth when set, otherwise no Authorization header)
+        enabled (default true; set false to disable even when host is configured)
         addl-prompt (default empty string)
         system-prompt (default value lists off critical rules and specific guidelines)
 
@@ -160,7 +166,7 @@ def llm_summary(
     "test", "instructor test", "timeout", "module", "text", "plan") which are used to customize
     the system prompt for the LLM.
     """
-    if config is None or "host" not in config:
+    if config is None or "host" not in config or not config.get("enabled", True):
         return
     type_map = {
         "lint": "linter results",
@@ -228,6 +234,7 @@ Provide a succinct, bulleted breakdown of the unique issues found above, referen
             model=config.get('model', ""),
             temperature=config.get('temperature', 0.1),
             top_p=config.get('top_p', 0.9),
+            api_key=config.get('api-key') or None,
         )
         output.hr()
         output.br()

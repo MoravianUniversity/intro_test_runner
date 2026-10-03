@@ -4,11 +4,11 @@ Command line program that reads tests.json and runs tests accordingly.
 
 from argparse import ArgumentParser
 from pathlib import Path
-import json
 import signal
 
 from ._output import Output
 from ._utils import tb_info
+from ._config import load_merged_config
 from ._external_progs import lint, test, llm_summary
 from ._internal_checks import check_module, check_text_file, check_all, copy_files, check_tests
 from ._function_planner import check_all_function_planners, resolve_student_email
@@ -47,6 +47,9 @@ def main():
     parser = ArgumentParser(description="Run intro tests.")
     parser.add_argument("--config", "-c", type=str, default="tests.json",
                         help="Path to the test configuration file (default: tests.json)")
+    parser.add_argument("--global-config", type=str, default=None,
+                        help="Path to a global defaults JSON file (overrides ITR_CONFIG / "
+                             "XDG /etc discovery)")
     parser.add_argument("--src", "-s", type=str, default=".",
                         help="Path to the source code directory (default: current directory)")
     parser.add_argument("--html", action="store_true",
@@ -56,9 +59,8 @@ def main():
                              "(falls back to last git commit author in --src)")
     args = parser.parse_args()
 
-    # Read the test configuration
-    with open(args.config, encoding="utf-8") as f:
-        config = json.load(f)
+    # Read assignment config and merge optional global defaults (assignment wins)
+    config = load_merged_config(args.config, args.global_config)
     output = Output()
     problem_types = []
 
