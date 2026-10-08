@@ -1,13 +1,15 @@
 """
 Module for generating output in different formats (plain text and HTML). The Output class provides
-methods to add content in various formats (paragraphs, preformatted blocks, markdown) and handles
-the conversion of special face codes into actual faces, as well as the conversion of ANSI color
-codes into HTML styles. The final output can be printed in either plain text or HTML format.
+methods to add content in various formats (paragraphs, bulleted lists, preformatted blocks,
+markdown) and handles the conversion of special face codes into actual faces, as well as the
+conversion of ANSI color codes into HTML styles. The final output can be printed in either plain
+text or HTML format.
 """
 
 import html
 import random
 import re
+from collections.abc import Sequence
 from typing import Callable
 
 try:
@@ -67,6 +69,17 @@ class Output:
         content = self.faceify(content)
         self.text += f"{content}\n\n"
         self.html += f"<p>{_htmlify(content)}</p>"
+
+    def ul(self, items: Sequence[str]) -> None:
+        """
+        Output content as an unordered bulleted list. Each item can include face codes and inline
+        code (backticks) like ``p()``. Empty sequences are ignored.
+        """
+        if not items:
+            return
+        faceified = [self.faceify(item) for item in items]
+        self.text += "".join(f" * {item}\n" for item in faceified) + "\n"
+        self.html += "<ul>" + "".join(f"<li>{_htmlify(item)}</li>" for item in faceified) + "</ul>"
 
     def pre_terminal(
             self, content: str, post_process: Callable[[str], str]|None = None

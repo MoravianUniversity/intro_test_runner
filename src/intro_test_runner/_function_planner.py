@@ -161,12 +161,14 @@ def _check_plan_problems(
         f":-| The function plan for `{module_name}` (plan `{plan}`) has "
         f"{len(items)} problem{'s' if len(items) != 1 else ''}:"
     )
+    bullets: list[str] = []
     for severity, context, message in items:
         label = "Error" if severity == "error" else "Warning"
         if context:
-            output.p(f":-| {label} ({context}): {message}")
+            bullets.append(f"{label} ({context}): {message}")
         else:
-            output.p(f":-| {label}: {message}")
+            bullets.append(f"{label}: {message}")
+    output.ul(bullets)
     return False
 
 
@@ -268,13 +270,15 @@ def _compare_plan_python(
         f":-| The function plan for `{module_name}` (plan `{plan}`) differs from "
         f"your Python code ({len(differences)} difference{'s' if len(differences) != 1 else ''}):"
     )
+    bullets: list[str] = []
     for diff in differences:
         message = diff.get("message") or "Difference found."
         func = diff.get("function")
         if func:
-            output.p(f":-| `{func}`: {message}")
+            bullets.append(f"`{func}`: {message}")
         else:
-            output.p(f":-| {message}")
+            bullets.append(message)
+    output.ul(bullets)
     return False
 
 
