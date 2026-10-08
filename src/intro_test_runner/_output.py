@@ -96,7 +96,11 @@ class Output:
         """Output content as markdown."""
         self.text += f"{content}\n\n"
         if markdown is not None:
-            self.html += f"<div>{markdown(content, **MD_KWARGS)}</div>"  # type: ignore
+            try:
+                self.html += f"<div>{markdown(content, **MD_KWARGS)}</div>"  # type: ignore
+            except Exception as e:
+                print(f"Error converting markdown to HTML: {e}")
+                self.html += f"<div>{_htmlify(content)}</div>"
         else:
             self.html += f"<div>{_htmlify(content)}</div>"
 
