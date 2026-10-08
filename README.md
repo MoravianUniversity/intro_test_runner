@@ -105,7 +105,8 @@ Using on Gitkeeper
 
 * Cannot use snap-based installations of python or ruff due to sandboxing issues.
 * Must install this library as a system-wide Python package (including the dependencies).
-* To install: `python3 -m pip install git+https://github.com/MoravianUniversity/intro_test_runner.git`
+* To install: `sudo python3 -m pip install git+https://github.com/MoravianUniversity/intro_test_runner.git`
+* To update: `sudo python3 -m pip install --force-reinstall --no-deps git+https://github.com/MoravianUniversity/intro_test_runner.git --break-system-packages`
 * You may need to enable support for HTML output in Gitkeeper's assignment configuration.
 * Use the following action.sh file (along with including the `tests.json`, `.ruff.toml`, and `_instructor_test.py` files in the testing directory):
   ```bash
@@ -264,6 +265,7 @@ Provide a succinct, bulleted breakdown of the unique issues found above, referen
 TODO
 ----
 
+* Make more modular (e.g. make a "function-planner" plugin, make an "llm" plugin, even make the linter and tester plugins)
 * Improve HTML rendering on different devices (dark vs light mode, mobile vs desktop, etc.)
 * Use pytest-html and ruff + ciqar to generate more detailed HTML reports and include those in the output to students
 
