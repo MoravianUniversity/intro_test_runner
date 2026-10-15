@@ -172,7 +172,7 @@ def __process_user_input(
 
 def __highlight_user_input(output: str, inpt_ranges: list[tuple[int, int]]) -> str:
     return _indent_lines(__process_user_input(output, inpt_ranges, __user_input))
-    
+
 def __find_user_input(inpt: str, expected: str, last_end: int) -> int:
     # assumes inpt contains the trailing \n
     # TODO: this can mis-find if the input is also at the end of a line in the expected output
@@ -452,8 +452,8 @@ def __gen_output_message_text(
         printed_orig, expected_orig = __highlight_user_input_combined(printed_orig, expected_orig, inpt_ranges, input_placeholder)
         single_line = '\n' not in expected_orig and '\n' not in printed_orig
         note = BOLD_NOTE if inpt_ranges else ''
-        msg = f"Expected{note}: {_indent_lines_maybe(expected_orig, single_line)}"
-        msg += f"\nActual{note}: {_indent_lines_maybe(printed_orig, single_line)}"
+        msg = f"What your code was expected to output{note}: {_indent_lines_maybe(expected_orig, single_line)}"
+        msg += f"\nWhat your code actually outputs{note}: {_indent_lines_maybe(printed_orig, single_line)}"
         if single_line:
             diff = __diff_line(printed_lines[0], expected_lines[0])
         else:
