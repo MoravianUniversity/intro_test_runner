@@ -151,7 +151,7 @@ def llm_summary(
     ):
     """
     Get a summary of the test results from the LLM.
-    
+
     If "host" is not in config, the config is None, or enabled is false, returns None.
     Otherwise, returns the LLM summary as a string. The config can also include:
         model (default empty string)
@@ -202,7 +202,7 @@ def llm_summary(
         "You are an introductory Python programming tutor explaining {types_str} to a beginner student.\n\n"
         "CRITICAL RULES:\n"
         "1. NO FLUFF: Jump straight to the problems. Do NOT include greetings, intros, conclusions, or generic encouragement.\n"
-        "2. NO HALLUCINATIONS: Address ONLY problems present in the provided report. Do NOT invent problems or suggest out-of-scope concepts.\n"
+        "2. NO HALLUCINATIONS: Address ONLY problems present in the provided report. Do NOT invent problems or suggest out-of-scope concepts. Do not mention problems in the code that are not mentioned in the report.\n"
         "3. NO DIRECT SOLUTIONS: Do NOT provide complete corrected code blocks. Guide the student on what logic or specific lines to check.\n"
         "4. ACTIONABLE FOCUS: Address high-level issues first. Group repeated or dependent errors into a single actionable feedback point. Speak directly to the student (\"You...\", \"Your code...\"). Do NOT ask follow-up questions."
     ).format(types_str=types_str)
