@@ -392,13 +392,34 @@ def _check_test_funcs(
     counts = {
         n: len(questions) for n, questions in questions.items()
     }
+    # Explicitly named requirements must match by name
     for n in names:
-        count = counts.get(n, 0)
-        exp_count = req_funcs.get(n[5:], 0)
-        # TODO: if n[5:] is not in req_funcs, look for a close match and use its count
-        if count < exp_count:
-            output.p(f":-| `{n}` must have at least {exp_count} test 'questions'. "
-                     f"You have {count} test 'questions'.")
+        base = n[5:]
+        if base in req_funcs and not base.startswith("_"):
+            count = counts.get(n, 0)
+            exp_count = req_funcs[base]
+            if count < exp_count:
+                output.p(f":-| `{n}` must have at least {exp_count} test 'questions'. "
+                         f"You have {count} test 'questions'.")
+                good = False
+
+    # Requirements starting with "_" can be matched by a test with any name, but each must
+    # be matched by a different test that isn't already used by a named requirement.
+    # Pairing largest with largest finds a valid assignment if one exists.
+    wildcard_counts = sorted(
+        (c for f, c in req_funcs.items() if f.startswith("_")), reverse=True
+    )
+    named = {f"test_{f}" for f in req_funcs if not f.startswith("_")}
+    free_counts = sorted(
+        (counts.get(n, 0) for n in names if n not in named), reverse=True
+    )
+    for i, exp_count in enumerate(wildcard_counts):
+        if i >= len(free_counts):
+            # Too few test functions is already reported by the count check above
+            break
+        if free_counts[i] < exp_count:
+            output.p(f":-| You need a different test function with at least {exp_count} "
+                     f"test 'questions' (the best remaining one has {free_counts[i]}).")
             good = False
 
     # Check for duplicate questions
